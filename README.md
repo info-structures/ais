@@ -1,7 +1,9 @@
 
 # AIS based PORL
 This repository contains the code for the PORL (partially observed reinforcement learning) experiments presented in the paper
-> J. Subramanian, A. Sinha, R. Seraj, and A. Mahajan, "Approximate Information State for Approximate Planning and Reinforcement Learning in Partially Observable Environments", 2020. 
+> J. Subramanian, A. Sinha, R. Seraj, and A. Mahajan, "[Approximate Information State for Approximate Planning and Reinforcement Learning in Partially Observable Environments][paper]", 2020. 
+
+[paper]: http://arxiv.org/abs/2010.08843
 
 Three classes of experiments are presented (with their `gym-environment-names`)
 * **Low-dimensional environments**
@@ -78,4 +80,16 @@ wrapper scripts:
       the name of the environment must be changed in
       `bin/highdim/minigrid_*.sh` files.
 
+# Citation
+Please use the following citation to refer to the paper:
 
+```
+@misc{AIS,
+      title={Approximate information state for approximate planning and reinforcement learning in partially observed systems}, 
+      author={Jayakumar Subramanian and Amit Sinha and Raihan Seraj and Aditya Mahajan},
+      year={2020},
+      note={arXiv:2010.08843},
+      url={https://arxiv.org/abs/2010.08843},
+
+}
+```
