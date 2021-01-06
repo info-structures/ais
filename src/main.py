@@ -12,6 +12,7 @@ import torch.optim as optim
 from torch.nn.modules import MSELoss as MSELoss
 from torch.distributions import Categorical
 from torch.distributions.multivariate_normal import MultivariateNormal
+from torch.utils.tensorboard import SummaryWriter
 
 parser = argparse.ArgumentParser(description='This code runs AIS using the Next Observation prediction version')
 
@@ -65,6 +66,7 @@ if not os.path.exists(output_folder):
 
 def eval_and_save_stuff(_bc, _N_eps_eval, _batch_num, _perf_array, policy_optimizer, AIS_optimizer):
 	performance = _bc.eval_performance(greedy=False, n_episodes=_N_eps_eval)
+	writer.add_scalar("Performance/performance", performance, _batch_num)
 	print ('Performance on Iteration No.', _batch_num, ': ', performance)
 	_perf_array.append(performance)
 
@@ -76,6 +78,7 @@ def eval_and_save_stuff(_bc, _N_eps_eval, _batch_num, _perf_array, policy_optimi
 
 if __name__ == "__main__":
 	bc = batch_creator(args, env, output_folder)
+	writer = SummaryWriter()
 
 	policy_optimizer = optim.Adam(bc.policy.parameters(), lr=policy_LR)
 	AIS_optimizer = optim.Adam(list(bc.rho.parameters()) + list(bc.psi.parameters()), lr=ais_LR)
@@ -167,7 +170,10 @@ if __name__ == "__main__":
 		total_loss.backward()
 		AIS_optimizer.step()
 		policy_optimizer.step()
+		# performance = bc.eval_performance(greedy=False, n_episodes=N_eps_eval)
+		# writer.add_scalar("Performance/performance", performance, batch_num)
 
+	writer.flush()
 	eval_and_save_stuff(bc, N_eps_eval, batch_num, perf_array, policy_optimizer, AIS_optimizer)
 
 	output_filename = 'seed' + str(seed) + '.npz'
