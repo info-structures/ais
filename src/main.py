@@ -66,7 +66,7 @@ if not os.path.exists(output_folder):
 
 def eval_and_save_stuff(_bc, _N_eps_eval, _batch_num, _perf_array, policy_optimizer, AIS_optimizer):
 	performance = _bc.eval_performance(greedy=False, n_episodes=_N_eps_eval)
-	writer.add_scalar("Performance/performance", performance, _batch_num)
+	writer.add_scalar("Performance/" + _bc.args.env_name + "/performance", performance, _batch_num)
 	print ('Performance on Iteration No.', _batch_num, ': ', performance)
 	_perf_array.append(performance)
 
