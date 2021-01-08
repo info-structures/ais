@@ -80,6 +80,9 @@ if __name__ == "__main__":
 	bc = batch_creator(args, env, output_folder)
 	writer = SummaryWriter()
 
+	# Use eqn 60/61, do not fit observation, fit AIS
+	fit_obs = False
+
 	policy_optimizer = optim.Adam(bc.policy.parameters(), lr=policy_LR)
 	AIS_optimizer = optim.Adam(list(bc.rho.parameters()) + list(bc.psi.parameters()), lr=ais_LR)
 
@@ -136,7 +139,10 @@ if __name__ == "__main__":
 							next_obs_loss = next_obs_loss - torch.logsumexp(mixture_probs, dim=0)
 						else:
 							m = Categorical(bc.obs_probs[j-1, :])
-							next_obs_loss = next_obs_loss - m.log_prob(bc.observations[j, :].argmax())
+							if fit_obs:
+								next_obs_loss = next_obs_loss - m.log_prob(bc.observations[j, :].argmax())
+							else:
+								next_obs_loss = next_obs_loss - m.log_prob(bc.ais[j, :].argmax())
 					count = count + 1
 				current_eid = current_eid + 1
 				seg_first = i
@@ -156,7 +162,10 @@ if __name__ == "__main__":
 					next_obs_loss = next_obs_loss - torch.logsumexp(mixture_probs, dim=0)
 				else:
 					m = Categorical(bc.obs_probs[j-1, :])
-					next_obs_loss = next_obs_loss - m.log_prob(bc.observations[j, :].argmax())
+					if fit_obs:
+						next_obs_loss = next_obs_loss - m.log_prob(bc.observations[j, :].argmax())
+					else:
+						next_obs_loss = next_obs_loss - m.log_prob(bc.ais[j, :].argmax())
 			count = count + 1
 
 		if count != 0:

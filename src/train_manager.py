@@ -81,6 +81,7 @@ class batch_creator():
 		self.mvg_dist_std_estimates = torch.Tensor([])
 		self.mvg_dist_mix_estimates = torch.Tensor([])
 		self.observations = torch.Tensor([])
+		self.ais = torch.Tensor([])
 		self.episode_id = torch.zeros(self.batch_size)
 
 		num_samples = 0
@@ -102,6 +103,7 @@ class batch_creator():
 				rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
 				ais_z, hidden = self.rho(rho_input, hidden)
 				ais_z = ais_z.reshape(-1)
+				self.ais = torch.cat((self.ais, ais_z.unsqueeze(0)))
 
 				policy_probs = self.policy(ais_z.detach())
 
