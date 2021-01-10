@@ -12,7 +12,7 @@ from networks import rho_net_moddim, psi_net_moddim, policy_net_moddim
 from networks import rho_net_highdim, psi_net_highdim_MMD, psi_net_highdim_KL, policy_net_highdim
 
 class batch_creator():
-	def __init__(self, args, env, output_folder):
+	def __init__(self, args, env, output_folder, fit_obs):
 		self.args = args
 		self.env = env
 		self.AIS_SS = args.AIS_state_size #d_{\hat Z}
@@ -21,7 +21,11 @@ class batch_creator():
 		#for small and finite action and observation spaces, lowdim or moddim can be used
 		if args.env_name == "Tiger-v0" or args.env_name == "Voicemail-v0" or args.env_name == "CheeseMaze-v0":
 			self.rho = rho_net_lowdim(num_obs = self.env.observation_space.n, num_actions = self.env.action_space.n, AIS_state_size = self.AIS_SS)
-			self.psi = psi_net_lowdim(num_obs = self.env.observation_space.n, num_actions = self.env.action_space.n, AIS_state_size = self.AIS_SS)
+			if fit_obs:
+				self.psi = psi_net_lowdim(num_obs = self.env.observation_space.n, num_actions = self.env.action_space.n, AIS_state_size = self.AIS_SS)
+			else:
+				self.psi = psi_net_lowdim(num_obs=self.AIS_SS, num_actions=self.env.action_space.n,
+										  AIS_state_size=self.AIS_SS)
 			self.policy = policy_net_lowdim(num_actions = self.env.action_space.n, AIS_state_size = self.AIS_SS)
 		elif args.env_name == "DroneSurveillance-v0" or args.env_name == "RockSampling-v0":
 			self.rho = rho_net_moddim(num_obs = self.env.observation_space.n, num_actions = self.env.action_space.n, AIS_state_size = self.AIS_SS)

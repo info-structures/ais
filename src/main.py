@@ -27,7 +27,7 @@ parser.add_argument("--ais_LR",	type=float, help="Learning Rate for AIS Netowrk"
 parser.add_argument("--batch_size", type=int, help="Number of samples per batch of training", default=200)
 parser.add_argument("--num_batches", type=int, help="Number of batches used in training", default=2000)
 parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=40)
-parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='MMD')
+parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='KL')
 parser.add_argument("--seed", type=int, help="Random seed of the experiment", default=42)
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)')
 parser.add_argument("--AIS_pred_ncomp", type=int, help="Number of Components used in the GMM to predict next AIS (For MiniGrid+KL)", default=5)
@@ -77,11 +77,12 @@ def eval_and_save_stuff(_bc, _N_eps_eval, _batch_num, _perf_array, policy_optimi
 	return
 
 if __name__ == "__main__":
-	bc = batch_creator(args, env, output_folder)
-	writer = SummaryWriter()
-
 	# Use eqn 60/61, do not fit observation, fit AIS
 	fit_obs = False
+	bc = batch_creator(args, env, output_folder, fit_obs)
+	writer = SummaryWriter()
+
+
 
 	policy_optimizer = optim.Adam(bc.policy.parameters(), lr=policy_LR)
 	AIS_optimizer = optim.Adam(list(bc.rho.parameters()) + list(bc.psi.parameters()), lr=ais_LR)

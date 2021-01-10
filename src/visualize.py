@@ -138,13 +138,87 @@ def eval_performance(bc, greedy=False, n_episodes=1):
 
     return obs, actions, states, np.array(initial_state), np.array(aiss)
 
+
+def plot_trajectory_single_obs(bc, action_dict):
+    plt.subplot(2,1,1)
+    for a in range(4):
+        hidden = None
+        current_obs = bc.convert_int_to_onehot(0, bc.env.observation_space.n)
+        action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
+        rho_input = torch.cat((current_obs, action, torch.Tensor([0]))).reshape(1, 1, -1)
+        ais_z, hidden = bc.rho(rho_input, hidden)
+        plt.plot(ais_z.detach().numpy().reshape(-1), label=action_dict[a])
+    plt.legend(loc="best")
+
+    # Start predefined trajectory 1
+    bc.env.reset()
+    next_obs = bc.env.set(9)
+    current_obs = bc.convert_int_to_onehot(next_obs, bc.env.observation_space.n)
+    actions = [0, 0, 3, 3, 1, 0, 3, 3]
+    reward = 0.
+    hidden = None
+    aiss = []
+    for a in actions:
+        action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
+        rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
+        ais_z, hidden = bc.rho(rho_input, hidden)
+        ais_z = ais_z.reshape(-1)
+        aiss.append(ais_z)
+        visualize_maze(env.current_state, ais_z.detach().numpy())
+
+        next_obs, reward, done, _ = bc.env.step(a)
+
+        if bc.args.env_name[:8] == 'MiniGrid':
+            current_obs = next_obs['image']
+            current_obs = bc.get_encoded_obs(current_obs)
+        else:
+            current_obs = next_obs
+            current_obs = bc.convert_int_to_onehot(current_obs, bc.env.observation_space.n)
+    assert(next_obs+1==1)
+    assert(bc.env.current_state==0)
+    plt.subplot(2, 1, 2)
+    plt.plot(ais_z.detach().numpy(), label="trajectory 1")
+
+    bc.env.reset()
+    next_obs = bc.env.set(8)
+    current_obs = bc.convert_int_to_onehot(next_obs, bc.env.observation_space.n)
+    actions = [0, 0]
+    reward = 0.
+    hidden = None
+    aiss = []
+    for a in actions:
+        action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
+        rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
+        ais_z, hidden = bc.rho(rho_input, hidden)
+        ais_z = ais_z.reshape(-1)
+        aiss.append(ais_z)
+        visualize_maze(env.current_state, ais_z.detach().numpy())
+
+        next_obs, reward, done, _ = bc.env.step(a)
+
+        if bc.args.env_name[:8] == 'MiniGrid':
+            current_obs = next_obs['image']
+            current_obs = bc.get_encoded_obs(current_obs)
+        else:
+            current_obs = next_obs
+            current_obs = bc.convert_int_to_onehot(current_obs, bc.env.observation_space.n)
+    assert (next_obs + 1 == 1)
+    assert (bc.env.current_state == 0)
+    plt.plot(ais_z.detach().numpy(), label="trajectory 2")
+
+    plt.legend(loc="best")
+    plt.show()
+    return
+
+
 def kmeans_cluster(ais_z, actions, obs, num_group=10):
     _, label, inertia = k_means(ais_z, num_group)
     for i in range(num_group):
         ind = np.where(label==i)
-        plot_action_obs_aiz(ind[0], actions, obs)
+        plot_action_obs_aiz(ind[0], actions, obs, ais_z)
 
-def plot_action_obs_aiz(ind,actions, obs):
+
+def plot_action_obs_aiz(ind,actions, obs, ais_z):
         fig, axs = plt.subplots(3, 1)
         axs[0].set_xlabel('time step (reverse)')
         axs[0].set_ylabel('Action')
@@ -187,6 +261,7 @@ def plot_action_obs_aiz(ind,actions, obs):
             axs[2].legend(loc='best')
         plt.show()
 
+
 def plot_aiz_initial_state(initial_state, obs, ais_z):
     means = []
     for i in range(10):
@@ -223,6 +298,7 @@ def draw_tsne(ais_z, perplexity=20):
 
 
 def visualize_maze(state, ais_z):
+    plt.figure(0)
     plt.subplot(121)
     maze = np.array([[1, 1, 1, 1, 1], [1, 0, 1, 0, 1], [1, 0, 1, 0, 1]])
     if state <= 4:
@@ -248,11 +324,14 @@ def visualize_maze(state, ais_z):
 
 
 if __name__ == "__main__":
-    bc = batch_creator(args, env, output_folder)
+    bc = batch_creator(args, env, output_folder, True)
     bc.load_models_from_folder(args.models_folder)
-    obs, actions, states, initial_state, ais_z = eval_performance(bc, greedy=False, n_episodes=N_eps_eval)
-    draw_tsne(ais_z)
-    kmeans_cluster(ais_z, actions, obs)
-    plot_aiz_initial_state(initial_state, obs, ais_z)
+    # obs, actions, states, initial_state, ais_z = eval_performance(bc, greedy=False, n_episodes=N_eps_eval)
+    # draw_tsne(ais_z)
+    # kmeans_cluster(ais_z, actions, obs)
+    # plot_aiz_initial_state(initial_state, obs, ais_z)
+    action_dict = {0:"N",1:"S",2:"E",3:"W"}
+    plot_trajectory_single_obs(bc, action_dict)
+
 
 
