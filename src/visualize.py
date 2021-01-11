@@ -3,6 +3,7 @@ import os
 import numpy as np
 import argparse
 import gym
+import time
 from sklearn.cluster import k_means as k_means
 from sklearn.manifold import TSNE
 from train_manager import batch_creator
@@ -139,7 +140,36 @@ def eval_performance(bc, greedy=False, n_episodes=1):
     return obs, actions, states, np.array(initial_state), np.array(aiss)
 
 
-def plot_trajectory_single_obs(bc, action_dict):
+def plot_single_obs(bc, action_dict):
+    ais = {}
+    for i in range(7):
+        ais[i] = np.zeros((4,40))
+    for initial_state in range(10):
+        for a in range(4):
+            hidden = None
+            bc.env.reset()
+            next_obs = bc.env.set(initial_state)
+            current_obs = bc.convert_int_to_onehot(next_obs, bc.env.observation_space.n)
+            action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
+            rho_input = torch.cat((current_obs, action, torch.Tensor([0]))).reshape(1, 1, -1)
+            ais_z, hidden = bc.rho(rho_input, hidden)
+            ais_z_value = ais_z.detach().numpy().reshape(-1)
+            next_obs, reward, done, _ = bc.env.step(a)
+            ais[next_obs][a,:] = ais_z_value
+    for i in range(6):
+        plt.subplot(3, 2, i + 1)
+        for a in range(4):
+            plt.plot(ais[i][a,:], label=action_dict[a])
+            mean = np.mean(ais[i], axis=0)
+            error = np.linalg.norm(ais[i] - mean, 'fro')
+        plt.legend(loc="best")
+        plt.xlabel("AIS dim")
+        plt.ylabel("AIS value")
+        plt.title("Observation " +str(i+1) +", single action")
+    plt.show()
+
+
+def plot_trajectory_single_obs(bc, action_dict, vis_maze=False):
     plt.subplot(2,1,1)
     for a in range(4):
         hidden = None
@@ -149,66 +179,53 @@ def plot_trajectory_single_obs(bc, action_dict):
         ais_z, hidden = bc.rho(rho_input, hidden)
         plt.plot(ais_z.detach().numpy().reshape(-1), label=action_dict[a])
     plt.legend(loc="best")
+    plt.xlabel("AIS dim")
+    plt.ylabel("AIS value")
+    plt.title("AIS value for single Observation 1 with single action")
 
     # Start predefined trajectory 1
-    bc.env.reset()
-    next_obs = bc.env.set(9)
-    current_obs = bc.convert_int_to_onehot(next_obs, bc.env.observation_space.n)
-    actions = [0, 0, 3, 3, 1, 0, 3, 3]
-    reward = 0.
-    hidden = None
-    aiss = []
-    for a in actions:
-        action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
-        rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
-        ais_z, hidden = bc.rho(rho_input, hidden)
-        ais_z = ais_z.reshape(-1)
-        aiss.append(ais_z)
-        visualize_maze(env.current_state, ais_z.detach().numpy())
-
-        next_obs, reward, done, _ = bc.env.step(a)
-
-        if bc.args.env_name[:8] == 'MiniGrid':
-            current_obs = next_obs['image']
-            current_obs = bc.get_encoded_obs(current_obs)
-        else:
-            current_obs = next_obs
-            current_obs = bc.convert_int_to_onehot(current_obs, bc.env.observation_space.n)
-    assert(next_obs+1==1)
-    assert(bc.env.current_state==0)
+    initial_states = [9, 8, 8, 5]
+    actions_sequences = [[0, 0, 3, 3, 1, 0, 3, 3],
+                         [0, 0],
+                         [0, 0, 2, 2, 3, 3],
+                         [1, 0, 0, 2, 3]]
     plt.subplot(2, 1, 2)
-    plt.plot(ais_z.detach().numpy(), label="trajectory 1")
+    for i in range(len(initial_states)):
+        bc.env.reset()
+        next_obs = bc.env.set(initial_states[i])
+        current_obs = bc.convert_int_to_onehot(next_obs, bc.env.observation_space.n)
+        actions = actions_sequences[i]
+        reward = 0.
+        hidden = None
+        aiss = []
+        for a in actions:
+            action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
+            rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
+            ais_z, hidden = bc.rho(rho_input, hidden)
+            ais_z = ais_z.reshape(-1)
+            aiss.append(ais_z)
 
-    bc.env.reset()
-    next_obs = bc.env.set(8)
-    current_obs = bc.convert_int_to_onehot(next_obs, bc.env.observation_space.n)
-    actions = [0, 0]
-    reward = 0.
-    hidden = None
-    aiss = []
-    for a in actions:
-        action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
-        rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
-        ais_z, hidden = bc.rho(rho_input, hidden)
-        ais_z = ais_z.reshape(-1)
-        aiss.append(ais_z)
-        visualize_maze(env.current_state, ais_z.detach().numpy())
+            if vis_maze:
+                visualize_maze(env.current_state, ais_z.detach().numpy())
+                time.sleep(0.025)
 
-        next_obs, reward, done, _ = bc.env.step(a)
+            next_obs, reward, done, _ = bc.env.step(a)
 
-        if bc.args.env_name[:8] == 'MiniGrid':
-            current_obs = next_obs['image']
-            current_obs = bc.get_encoded_obs(current_obs)
-        else:
-            current_obs = next_obs
-            current_obs = bc.convert_int_to_onehot(current_obs, bc.env.observation_space.n)
-    assert (next_obs + 1 == 1)
-    assert (bc.env.current_state == 0)
-    plt.plot(ais_z.detach().numpy(), label="trajectory 2")
+            if bc.args.env_name[:8] == 'MiniGrid':
+                current_obs = next_obs['image']
+                current_obs = bc.get_encoded_obs(current_obs)
+            else:
+                current_obs = next_obs
+                current_obs = bc.convert_int_to_onehot(current_obs, bc.env.observation_space.n)
+        assert(next_obs+1==1)
+        assert(bc.env.current_state==0)
+        plt.plot(ais_z.detach().numpy(), label="trajectory " + str(i))
 
+    plt.xlabel("AIS dim")
+    plt.ylabel("AIS value")
+    plt.title("AIS value for current Observation 1 with action sequences")
     plt.legend(loc="best")
     plt.show()
-    return
 
 
 def kmeans_cluster(ais_z, actions, obs, num_group=10):
@@ -331,7 +348,8 @@ if __name__ == "__main__":
     # kmeans_cluster(ais_z, actions, obs)
     # plot_aiz_initial_state(initial_state, obs, ais_z)
     action_dict = {0:"N",1:"S",2:"E",3:"W"}
-    plot_trajectory_single_obs(bc, action_dict)
+    plot_single_obs(bc, action_dict)
+    # plot_trajectory_single_obs(bc, action_dict, True)
 
 
 
