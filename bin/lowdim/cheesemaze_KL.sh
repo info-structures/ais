@@ -1,6 +1,6 @@
 #!/bin/bash
 
-OUTPUT_DIR=Results/eqn_60
+OUTPUT_DIR=Results
 ENV_NAME=CheeseMaze-v0
 EVAL_FREQ=500
 N_EPS_EVAL=50
@@ -9,10 +9,11 @@ LMBDA=0.0001
 POLICY_LR=0.0006
 AIS_LR=0.003
 BATCH_SIZE=200
-NUM_BATCHES=20000 #100000
+NUM_BATCHES=5000 #100000
 AIS_SS=15
 IPM=KL
 SEED=42
+FIT_OBS=True
 
 python src/main.py --output_dir ${OUTPUT_DIR} \
 					--env_name ${ENV_NAME} \
@@ -26,4 +27,5 @@ python src/main.py --output_dir ${OUTPUT_DIR} \
 					--num_batches ${NUM_BATCHES} \
 					--AIS_state_size ${AIS_SS} \
 					--IPM ${IPM} \
-					--seed ${SEED}
+					--seed ${SEED}\
+					--fit_obs ${FIT_OBS}

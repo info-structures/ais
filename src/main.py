@@ -31,6 +31,7 @@ parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='KL')
 parser.add_argument("--seed", type=int, help="Random seed of the experiment", default=42)
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)')
 parser.add_argument("--AIS_pred_ncomp", type=int, help="Number of Components used in the GMM to predict next AIS (For MiniGrid+KL)", default=5)
+parser.add_argument("--fit_obs", type=bool, help="True: use eqn 62/63; False: use eqn 60/61, do not fit observation, fit AIS", default=True)
 
 args = parser.parse_args()
 
@@ -47,6 +48,7 @@ AIS_SS = args.AIS_state_size #d_{\hat Z}
 AIS_PN = args.AIS_pred_ncomp #this arg is only used for MiniGrid with the KL IPM
 IPM = args.IPM
 seed = args.seed
+fit_obs = args.fit_obs
 
 #set random seeds
 np.random.seed(seed)
@@ -56,7 +58,7 @@ env.seed(seed)
 if (args.env_name[:8] == 'MiniGrid') and (args.IPM == 'KL'):
 	args_list = [str(args.env_name), str(eval_frequency), str(N_eps_eval), str(beta), str(lmbda), str(policy_LR), str(ais_LR), str(batch_size), str(num_batches), str(AIS_SS), str(AIS_PN), str(IPM)]
 else:
-	args_list = [str(args.env_name), str(eval_frequency), str(N_eps_eval), str(beta), str(lmbda), str(policy_LR), str(ais_LR), str(batch_size), str(num_batches), str(AIS_SS), str(IPM)]
+	args_list = [str(args.env_name), str(eval_frequency), str(N_eps_eval), str(beta), str(lmbda), str(policy_LR), str(ais_LR), str(batch_size), str(num_batches), str(AIS_SS), str(IPM), str(fit_obs)]
 output_folder = os.path.join(args.output_dir , '_'.join(args_list))
 if not os.path.exists(output_folder):
 	try:
@@ -77,8 +79,6 @@ def eval_and_save_stuff(_bc, _N_eps_eval, _batch_num, _perf_array, policy_optimi
 	return
 
 if __name__ == "__main__":
-	# Use eqn 60/61, do not fit observation, fit AIS
-	fit_obs = False
 	bc = batch_creator(args, env, output_folder, fit_obs)
 	writer = SummaryWriter()
 
@@ -94,7 +94,7 @@ if __name__ == "__main__":
 	perf_array = []
 	for batch_num in range(num_batches):
 		if ((batch_num) % eval_frequency == 0) or (batch_num == 0):
-			# print('Iteration No.', batch_num)
+			print('Iteration No.', batch_num)
 			eval_and_save_stuff(bc, N_eps_eval, batch_num, perf_array, policy_optimizer, AIS_optimizer)
 		bc.create_batch()
 
@@ -180,7 +180,10 @@ if __name__ == "__main__":
 		AIS_optimizer.step()
 		# policy_optimizer.step()
 		# performance = bc.eval_performance(greedy=False, n_episodes=N_eps_eval)
-		writer.add_scalar("Loss/eqn_60", total_loss, batch_num)
+		if fit_obs:
+			writer.add_scalar("Loss/eqn_62_" + str(AIS_SS) + "AIS_SS", total_loss, batch_num)
+		else:
+			writer.add_scalar("Loss/eqn_60_" + str(AIS_SS) + "AIS_SS", total_loss, batch_num)
 
 	writer.flush()
 	eval_and_save_stuff(bc, N_eps_eval, batch_num, perf_array, policy_optimizer, AIS_optimizer)
