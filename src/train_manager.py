@@ -49,9 +49,10 @@ class batch_creator():
 		self.beta = args.beta #discount
 		self.batch_size = args.batch_size
 		self.seed = args.seed
-		self.output_model_folder = os.path.join(output_folder, 'models', 'seed' + str(self.seed))
-		if not os.path.exists(self.output_model_folder):
-			os.makedirs(self.output_model_folder)
+		if output_folder is not None:
+			self.output_model_folder = os.path.join(output_folder, 'models', 'seed' + str(self.seed))
+			if not os.path.exists(self.output_model_folder):
+				os.makedirs(self.output_model_folder)
 
 		#the data of a single bacth is stored in the following
 		self.policy_history = torch.Tensor([])

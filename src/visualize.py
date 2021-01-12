@@ -30,11 +30,11 @@ parser.add_argument("--policy_LR", type=float, help="Learning Rate for Policy Ne
 parser.add_argument("--ais_LR", type=float, help="Learning Rate for AIS Netowrk", default=0.003)
 parser.add_argument("--batch_size", type=int, help="Number of samples per batch of training", default=200)
 parser.add_argument("--num_batches", type=int, help="Number of batches used in training", default=2000)
-parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=40)
+parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=15)
 parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='MMD')
 parser.add_argument("--seed", type=int, help="Random seed of the experiment", default=42)
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)',
-                    default="results/CheeseMaze-v0_500_50_0.7_0.0001_0.0006_0.003_200_20000_40_KL/models/seed42")
+                    default="results/eqn_60/CheeseMaze-v0_500_50_0.7_0.0001_0.0006_0.003_200_20000_15_KL/models/seed42")
 parser.add_argument("--AIS_pred_ncomp", type=int,
                     help="Number of Components used in the GMM to predict next AIS (For MiniGrid+KL)", default=5)
 
@@ -143,7 +143,7 @@ def eval_performance(bc, greedy=False, n_episodes=1):
 def plot_single_obs(bc, action_dict):
     ais = {}
     for i in range(7):
-        ais[i] = np.zeros((4,40))
+        ais[i] = np.zeros((4,AIS_SS))
     for initial_state in range(10):
         for a in range(4):
             hidden = None
@@ -162,26 +162,21 @@ def plot_single_obs(bc, action_dict):
             plt.plot(ais[i][a,:], label=action_dict[a])
             mean = np.mean(ais[i], axis=0)
             error = np.linalg.norm(ais[i] - mean, 'fro')
-        plt.legend(loc="best")
+        # plt.legend(loc="best")
         plt.xlabel("AIS dim")
         plt.ylabel("AIS value")
         plt.title("Observation " +str(i+1) +", single action")
     plt.show()
+    return ais
 
-
-def plot_trajectory_single_obs(bc, action_dict, vis_maze=False):
-    plt.subplot(2,1,1)
+def plot_trajectory_single_obs(bc, ais, action_dict, vis_maze=False):
+    plt.subplot(2, 1, 1)
     for a in range(4):
-        hidden = None
-        current_obs = bc.convert_int_to_onehot(0, bc.env.observation_space.n)
-        action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
-        rho_input = torch.cat((current_obs, action, torch.Tensor([0]))).reshape(1, 1, -1)
-        ais_z, hidden = bc.rho(rho_input, hidden)
-        plt.plot(ais_z.detach().numpy().reshape(-1), label=action_dict[a])
+        plt.plot(ais[0][a, :], label=action_dict[a])
     plt.legend(loc="best")
     plt.xlabel("AIS dim")
     plt.ylabel("AIS value")
-    plt.title("AIS value for single Observation 1 with single action")
+    plt.title("Observation 1, single action")
 
     # Start predefined trajectory 1
     initial_states = [9, 8, 8, 5]
@@ -189,7 +184,6 @@ def plot_trajectory_single_obs(bc, action_dict, vis_maze=False):
                          [0, 0],
                          [0, 0, 2, 2, 3, 3],
                          [1, 0, 0, 2, 3]]
-    plt.subplot(2, 1, 2)
     for i in range(len(initial_states)):
         bc.env.reset()
         next_obs = bc.env.set(initial_states[i])
@@ -198,6 +192,7 @@ def plot_trajectory_single_obs(bc, action_dict, vis_maze=False):
         reward = 0.
         hidden = None
         aiss = []
+        plt.subplot(2, 1, 2)
         for a in actions:
             action = bc.convert_int_to_onehot(a, bc.env.action_space.n)
             rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
@@ -341,15 +336,15 @@ def visualize_maze(state, ais_z):
 
 
 if __name__ == "__main__":
-    bc = batch_creator(args, env, output_folder, True)
+    bc = batch_creator(args, env, None, False)
     bc.load_models_from_folder(args.models_folder)
     # obs, actions, states, initial_state, ais_z = eval_performance(bc, greedy=False, n_episodes=N_eps_eval)
     # draw_tsne(ais_z)
     # kmeans_cluster(ais_z, actions, obs)
     # plot_aiz_initial_state(initial_state, obs, ais_z)
     action_dict = {0:"N",1:"S",2:"E",3:"W"}
-    plot_single_obs(bc, action_dict)
-    # plot_trajectory_single_obs(bc, action_dict, True)
+    ais = plot_single_obs(bc, action_dict)
+    plot_trajectory_single_obs(bc, ais, action_dict, False)
 
 
 
