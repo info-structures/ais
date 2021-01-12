@@ -101,16 +101,16 @@ if __name__ == "__main__":
 		bc.create_batch()
 
 		#reinforce policy gradient update (backward view implemented here)
-		returns = []
-		current_eid = -1
-		for i, r in enumerate(bc.reward_episode[::-1]):
-			if current_eid != bc.episode_id[batch_size - i - 1]:
-				R = 0
-				current_eid = bc.episode_id[batch_size - i - 1]
-			R = r + beta * R
-			returns.insert(0,R)
-		returns = torch.Tensor(returns)
-		policy_loss = torch.sum(torch.mul(bc.policy_history, returns).mul(-1), -1)
+		# returns = []
+		# current_eid = -1
+		# for i, r in enumerate(bc.reward_episode[::-1]):
+		# 	if current_eid != bc.episode_id[batch_size - i - 1]:
+		# 		R = 0
+		# 		current_eid = bc.episode_id[batch_size - i - 1]
+		# 	R = r + beta * R
+		# 	returns.insert(0,R)
+		# returns = torch.Tensor(returns)
+		# policy_loss = torch.sum(torch.mul(bc.policy_history, returns).mul(-1), -1)
 
 		#update (\hat \rho) and (\hat P^y)
 		mse_loss = MSELoss()
@@ -176,12 +176,12 @@ if __name__ == "__main__":
 		#add all losses together and do a single backprop from total_loss
 		total_loss = lmbda * reward_loss + (1-lmbda)*next_obs_loss #+ policy_loss
 
-		policy_optimizer.zero_grad()
+		# policy_optimizer.zero_grad()
 		AIS_optimizer.zero_grad()
 		total_loss.backward()
-		policy_loss.backward()
+		# policy_loss.backward()
 		AIS_optimizer.step()
-		policy_optimizer.step()
+		# policy_optimizer.step()
 
 		if fit_obs:
 			writer.add_scalar("Loss/eqn_62_" + str(AIS_SS) + "AIS_SS", total_loss, batch_num)
