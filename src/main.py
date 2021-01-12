@@ -66,12 +66,13 @@ if not os.path.exists(output_folder):
 	except:
 		pass
 
-def eval_and_save_stuff(_bc, _N_eps_eval, _batch_num, _perf_array, policy_optimizer, AIS_optimizer):
-	# performance = _bc.eval_performance(greedy=False, n_episodes=_N_eps_eval)
-	# writer.add_scalar("Performance/" + _bc.args.env_name + "/performance", performance, _batch_num)
-	# print ('Performance on Iteration No.', _batch_num, ': ', performance)
-	# _perf_array.append(performance)
+def eval(_bc, _N_eps_eval, _batch_num, _perf_array):
+	performance = _bc.eval_performance(greedy=False, n_episodes=_N_eps_eval)
+	writer.add_scalar("Performance/" + str(AIS_SS) + "AIS_SS_" +str(fit_obs), performance, _batch_num)
+	print ('Performance on Iteration No.', _batch_num, ': ', performance)
+	_perf_array.append(performance)
 
+def save_stuff(_bc, policy_optimizer, AIS_optimizer):
 	_bc.save_networks()
 	#save optimizer state to continue training at a later stage
 	torch.save(policy_optimizer.state_dict(), os.path.join(_bc.output_model_folder, 'policy_optimizer.pth'))
@@ -95,20 +96,21 @@ if __name__ == "__main__":
 	for batch_num in range(num_batches):
 		if ((batch_num) % eval_frequency == 0) or (batch_num == 0):
 			print('Iteration No.', batch_num)
-			eval_and_save_stuff(bc, N_eps_eval, batch_num, perf_array, policy_optimizer, AIS_optimizer)
+			eval(bc, N_eps_eval, batch_num, perf_array)
+			save_stuff(bc, policy_optimizer, AIS_optimizer)
 		bc.create_batch()
 
 		#reinforce policy gradient update (backward view implemented here)
-		# returns = []
-		# current_eid = -1
-		# for i, r in enumerate(bc.reward_episode[::-1]):
-		# 	if current_eid != bc.episode_id[batch_size - i - 1]:
-		# 		R = 0
-		# 		current_eid = bc.episode_id[batch_size - i - 1]
-		# 	R = r + beta * R
-		# 	returns.insert(0,R)
-		# returns = torch.Tensor(returns)
-		# policy_loss = torch.sum(torch.mul(bc.policy_history, returns).mul(-1), -1)
+		returns = []
+		current_eid = -1
+		for i, r in enumerate(bc.reward_episode[::-1]):
+			if current_eid != bc.episode_id[batch_size - i - 1]:
+				R = 0
+				current_eid = bc.episode_id[batch_size - i - 1]
+			R = r + beta * R
+			returns.insert(0,R)
+		returns = torch.Tensor(returns)
+		policy_loss = torch.sum(torch.mul(bc.policy_history, returns).mul(-1), -1)
 
 		#update (\hat \rho) and (\hat P^y)
 		mse_loss = MSELoss()
@@ -174,19 +176,21 @@ if __name__ == "__main__":
 		#add all losses together and do a single backprop from total_loss
 		total_loss = lmbda * reward_loss + (1-lmbda)*next_obs_loss #+ policy_loss
 
-		# policy_optimizer.zero_grad()
+		policy_optimizer.zero_grad()
 		AIS_optimizer.zero_grad()
 		total_loss.backward()
+		policy_loss.backward()
 		AIS_optimizer.step()
-		# policy_optimizer.step()
-		# performance = bc.eval_performance(greedy=False, n_episodes=N_eps_eval)
+		policy_optimizer.step()
+
 		if fit_obs:
 			writer.add_scalar("Loss/eqn_62_" + str(AIS_SS) + "AIS_SS", total_loss, batch_num)
 		else:
 			writer.add_scalar("Loss/eqn_60_" + str(AIS_SS) + "AIS_SS", total_loss, batch_num)
 
 	writer.flush()
-	eval_and_save_stuff(bc, N_eps_eval, batch_num, perf_array, policy_optimizer, AIS_optimizer)
+	save_stuff(bc, policy_optimizer, AIS_optimizer)
+	eval(bc, N_eps_eval, batch_num, perf_array)
 
 	output_filename = 'seed' + str(seed) + '.npz'
 	np.savez(os.path.join(output_folder, output_filename), perf_array = np.array(perf_array))
