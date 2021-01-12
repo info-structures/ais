@@ -13,7 +13,7 @@ NUM_BATCHES=5000 #100000
 AIS_SS=15
 IPM=KL
 SEED=42
-FIT_OBS=True
+FIT_OBS=0
 
 python src/main.py --output_dir ${OUTPUT_DIR} \
 					--env_name ${ENV_NAME} \

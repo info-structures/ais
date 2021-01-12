@@ -31,7 +31,7 @@ parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='KL')
 parser.add_argument("--seed", type=int, help="Random seed of the experiment", default=42)
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)')
 parser.add_argument("--AIS_pred_ncomp", type=int, help="Number of Components used in the GMM to predict next AIS (For MiniGrid+KL)", default=5)
-parser.add_argument("--fit_obs", help="True: use eqn 62/63; False: use eqn 60/61, do not fit observation, fit AIS", default=True)
+parser.add_argument("--fit_obs", type=int, help="1: use eqn 62/63; 0: use eqn 60/61, do not fit observation, fit AIS", default=1)
 
 args = parser.parse_args()
 
