@@ -30,7 +30,7 @@ parser.add_argument("--policy_LR", type=float, help="Learning Rate for Policy Ne
 parser.add_argument("--ais_LR", type=float, help="Learning Rate for AIS Netowrk", default=0.003)
 parser.add_argument("--batch_size", type=int, help="Number of samples per batch of training", default=200)
 parser.add_argument("--num_batches", type=int, help="Number of batches used in training", default=2000)
-parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=10)
+parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=15)
 parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='MMD')
 parser.add_argument("--seed", type=int, help="Random seed of the experiment", default=42)
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)',
