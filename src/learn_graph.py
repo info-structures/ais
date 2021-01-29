@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import gym
-import time
+import pandas as pd
 from train_manager import batch_creator
 
 import torch
@@ -24,12 +24,14 @@ parser.add_argument("--policy_LR", type=float, help="Learning Rate for Policy Ne
 parser.add_argument("--ais_LR", type=float, help="Learning Rate for AIS Netowrk", default=0.003)
 parser.add_argument("--batch_size", type=int, help="Number of samples per batch of training", default=200)
 parser.add_argument("--num_batches", type=int, help="Number of batches used in training", default=2000)
-parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=15)
+parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=25)
 parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='MMD')
 parser.add_argument("--seed", type=int, help="Random seed of the experiment", default=42)
-parser.add_argument("--load_model", action="store_true")
+parser.add_argument("--load_policy", help="load the AIS model for trained optimal policy",action="store_true")
+parser.add_argument("--load_graph", help="load the parameters learned for the graph",action="store_true")
+parser.add_argument("--save_graph", help="load the parameters learned for the graph",action="store_true")
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)',
-                    default="results/eqn_60/CheeseMaze-v0_500_50_0.7_0.0001_0.0006_0.003_200_20000_15_KL/models/seed42")
+                    default="results/CheeseMaze-v0_500_50_0.7_0.0001_0.0006_0.003_200_15000_25_KL_1/models/seed42")
 parser.add_argument("--AIS_pred_ncomp", type=int,
                     help="Number of Components used in the GMM to predict next AIS (For MiniGrid+KL)", default=5)
 
@@ -116,10 +118,9 @@ def collect_sample(bc, greedy=False, n_episodes=1):
 
     return y, a, O, states
 
-def baum_welch(y, a, O, nz, n_episodes, n_iter=100):
-    epsilon = 1e-8
-    ny = len(list(set(y[0])))
-    na = len(list(set(a[0])))
+def baum_welch(y, a, O, nz, n_episodes, n_iter=100, epsilon=1e-8):
+    ny = 7 #len(list(set(y[0])))
+    na = 4 #len(list(set(a[0])))
     Ot = []
     y_a = []
     for r in range(n_episodes):
@@ -149,7 +150,7 @@ def baum_welch(y, a, O, nz, n_episodes, n_iter=100):
 
     for n in range(n_iter):
         print('Iteration: ', n)
-        if n%10 == 0:
+        if n%10 == 0 and args.save_graph:
             save_graph(A, B, initial_distribution, Ot, y_a, nz, seed)
         A_num = np.zeros((nz, ny, na, nz))
         A_den = np.zeros((nz, ny, na))
@@ -230,33 +231,6 @@ def baum_welch(y, a, O, nz, n_episodes, n_iter=100):
     return A, B, initial_distribution, Ot, y_a
 
 
-def plot_A(A,y_a, obs=None):
-    """
-    obs: if None, only plot A with observation y=obs; else plot all A's
-    """
-    if obs is None:
-        for i in y_a:
-            plt.imshow(A[:,i[0],i[1],:])
-            plt.title('P(z(t+1)|z(t)) with y: {}, a: {}'.format(i[0]+1, action_dict[i[1]]))
-            plt.colorbar()
-            plt.show()
-    else:
-        for i in y_a:
-            if i[0]==obs:
-                plt.imshow(A[:,i[0],i[1],:])
-                plt.title('P(z(t+1)|z(t)) with y: {}, a: {}'.format(i[0]+1, action_dict[i[1]]))
-                plt.colorbar()
-                plt.show()
-
-
-def plot_B(B,nz, Ot):
-    print("Order of Ot (r,y): ", Ot)
-    for i in range(nz):
-        plt.imshow(B[i,:,:])
-        plt.title("P(Ot|zt) with z{}".format(i))
-        plt.colorbar()
-        plt.show()
-
 def forward(A, B, initial_distribution, nz, y, a, O, Ot):
     T = len(y)
     alpha = np.zeros((nz, T))
@@ -267,6 +241,7 @@ def forward(A, B, initial_distribution, nz, y, a, O, Ot):
             alpha[j,t] = alpha[:,t-1].dot(A[:,y[t-1],a[t-1],j])*B[j,a[t],Ot.index(O[t])]
 
     return alpha
+
 
 def backward(A, B, nz, y, a, O, Ot):
     T = len(y)
@@ -279,8 +254,150 @@ def backward(A, B, nz, y, a, O, Ot):
 
     return beta
 
+
+def minimize(A, B, Ot, nz, y_a, epsilon=1e-8):
+    goal_obs = (1,6)
+    goal_obs_ind = to_tuple(Ot).index(goal_obs)
+
+    goal_ind = np.any(np.absolute(B[:,:,goal_obs_ind]-1) < epsilon, axis=1)
+    z2goal = np.arange(nz)[goal_ind]
+
+    z = list(range(nz))
+    # Split the state_to_goal and all other states
+    for i in z2goal:
+        z.remove(i)
+    partition = [z, list(z2goal)]
+
+    stable = False
+    while not stable:
+        L = partition.copy()
+        block_B = partition.pop(0)
+        old_split = []
+        for block_C in L:
+            for i in y_a:
+                # T(p in B, (y,a), q in C)
+                T = A[block_B, i[0], i[1], :][:,block_C]
+                # T(p in B, (y,a), C)
+                T = np.sum(T, axis=1)
+                T[T<epsilon]=0    # eliminate floating number error
+                T[np.absolute(T-1)<epsilon] = 1
+                split_T = group_same_entry(T, block_B)
+
+                O = []
+                for p in block_B:
+                    O_ind = np.where(B[p, i[1], :]>epsilon)[0]
+                    O.append(O_ind)
+                split_O = group_same_entry(O, block_B)
+
+                new_split = intersect_partition(split_T, split_O)
+
+                if old_split == []:
+                    old_split = new_split.copy()
+                else:
+                    split = intersect_partition(old_split, new_split)
+                    old_split = split.copy()
+        for s in split:
+            partition.append(s)
+        if compare_partition(L, partition):
+            stable = True
+
+
+
+def group_same_entry(X, block_B):
+    dict = {}
+    for i in range(len(X)):
+        if str(X[i]) not in dict.keys():
+            dict[str(X[i])] = [block_B[i]]
+        else:
+            dict[str(X[i])].append(block_B[i])
+    split = []
+    for key in dict.keys():
+        split.append(dict[key])
+    return split
+
+
+def intersect_partition(s1, s2):
+    s1_copy = s1.copy()
+    for b1 in s1_copy:
+        if b1 not in s2:
+            s1.remove(b1)
+            for b2 in s2:
+                i = intersection(b1, b2)
+                if i !=[]:
+                    s1.append(i)
+    return s1
+
+
+def compare_partition(p1, p2):
+    for p in p1:
+        pass
+
+def intersection(b1, b2):
+    return list(set(b1)&set(b2))
+
+
+def to_tuple(X):
+    return [(i[0], i[1]) for i in X]
+
+
+def observation_count(y):
+    dict = {}
+    num_total_obs = 0
+    for obs in y:
+        for o in obs:
+            num_total_obs += 1
+            if o not in dict.keys():
+                dict[o] = 0
+            else:
+                dict[o] += 1
+    for key in dict.keys():
+        print("Obs {} appear {}".format(key+1, dict[key]/num_total_obs))
+
+
+def plot_A(A,y_a, obs=None):
+    """
+    obs: if None, only plot A with observation y=obs; else plot all A's
+    """
+    if obs is None:
+        for i in y_a:
+            plt.imshow(A[:,i[0],i[1],:])
+            plt.title('P(z(t+1)|z(t)) with y: {}, a: {}'.format(i[0]+1, action_dict[i[1]]))
+            plt.xlabel("z(t+1)")
+            plt.ylabel("z(t)")
+            plt.colorbar()
+            plt.show()
+    else:
+        for i in y_a:
+            if i[0]==obs:
+                plt.imshow(A[:,i[0],i[1],:])
+                plt.title('P(z(t+1)|z(t),y(t),a(t)) with y: {}, a: {}'.format(i[0]+1, action_dict[i[1]]))
+                plt.xlabel("z(t+1)")
+                plt.ylabel("z(t)")
+                plt.colorbar()
+                plt.show()
+
+
+def plot_B(B,nz, Ot, state=None):
+    print("Order of Ot (r,y): ", Ot)
+    if state is None:
+        for i in range(nz):
+            plt.imshow(B[i,:,:])
+            plt.title("P(O(t)|z(t),a(t)) with z{}".format(i))
+            plt.xlabel("O(t) index")
+            plt.ylabel("a(t)")
+            plt.colorbar()
+            plt.show()
+    else:
+        plt.imshow(B[state, :, :])
+        plt.title("P(O(t)|z(t),a(t)) with z{}".format(state))
+        plt.xlabel("O(t) index")
+        plt.ylabel("a(t)")
+        plt.colorbar()
+        plt.show()
+
+
 def save_graph(A, B, initial_distribution, Ot, y_a, nz, seed):
-    if args.load_model:
+    if args.load_policy:
         np.save("graph/optimal_policy/A_{}_{}".format(nz, seed), A)
         np.save("graph/optimal_policy/B_{}_{}".format(nz, seed), B)
         np.save("graph/optimal_policy/initial_distribution_{}_{}".format(nz, seed), initial_distribution)
@@ -292,23 +409,37 @@ def save_graph(A, B, initial_distribution, Ot, y_a, nz, seed):
         np.save("graph/Ot_{}_{}".format(nz, seed), Ot)
         # np.save("graph/y_a", y_a)
 
+
 def load(nz, seed):
-    A = np.load("graph/A_{}_{}.npy".format(nz, seed))
-    B = np.load("graph/B_{}_{}.npy".format(nz, seed))
-    initial_distribution = np.load("graph/initial_distribution_{}_{}.npy".format(nz, seed))
-    Ot = np.load("graph/Ot_{}_{}.npy".format(nz, seed))
+    if args.load_policy:
+        A = np.load("graph/optimal_policy/A_{}_{}.npy".format(nz, seed))
+        B = np.load("graph/optimal_policy/B_{}_{}.npy".format(nz, seed))
+        initial_distribution = np.load("graph/optimal_policy/initial_distribution_{}_{}.npy".format(nz, seed))
+        Ot = np.load("graph/optimal_policy/Ot_{}_{}.npy".format(nz, seed))
+    else:
+        A = np.load("graph/A_{}_{}.npy".format(nz, seed))
+        B = np.load("graph/B_{}_{}.npy".format(nz, seed))
+        initial_distribution = np.load("graph/initial_distribution_{}_{}.npy".format(nz, seed))
+        Ot = np.load("graph/Ot_{}_{}.npy".format(nz, seed))
     y_a = np.load("graph/y_a.npy")
     return A, B, initial_distribution, Ot, y_a
+
 
 if __name__ == "__main__":
     bc = batch_creator(args, env, None, True)
     nz = 20
     action_dict = {0: "N", 1: "S", 2: "E", 3: "W"}
-    if args.load_model:
-        bc.load_models_from_folder(args.models_folder)
-    y, a, O, states = collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
-    A, B, initial_distribution, Ot, y_a = baum_welch(y, a, O, nz, N_eps_eval, 50)
-    save_graph(A, B, initial_distribution, Ot, y_a, nz, seed)
+    epsilon = 1e-8
+    if args.load_graph:
+        A, B, initial_distribution, Ot, y_a = load(nz, seed)
+    else:
+        if args.load_policy:
+            bc.load_models_from_folder(args.models_folder)
+        y, a, O, states = collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
+        A, B, initial_distribution, Ot, y_a = baum_welch(y, a, O, nz, N_eps_eval, 100, epsilon)
+        if args.save_graph:
+            save_graph(A, B, initial_distribution, Ot, y_a, nz, seed)
+    # minimize(A, B, Ot, nz, y_a, epsilon)
     plot_A(A, y_a)
     plot_B(B, nz, Ot)
     # bc_opt = batch_creator(args, env, None, True)
