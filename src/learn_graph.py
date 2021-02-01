@@ -189,7 +189,7 @@ def initialization(y, a, O, n_episodes):
     return A, B, initial_distribution, ny, na, nz, nO, Ot, y_a
 
 
-def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a, n_episodes, n_iter=100, epsilon=1e-8):
+def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a , n_iter=100, epsilon=1e-8):
     for n in range(n_iter):
         print('Iteration: ', n)
         if n%10 == 0 and args.save_graph:
@@ -199,6 +199,7 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a, n_e
         B_num = np.zeros((nz, na, nO))
         B_den = np.zeros((nz, na))
         initial_distribution_num = np.zeros(nz)
+        n_episodes = len(y)
         R = n_episodes
         for r in range(n_episodes):
             yr = np.array(y[r])
@@ -492,7 +493,10 @@ def save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args):
     np.save(folder+"B_{}_{}".format(nz, seed), B)
     np.save(folder+"initial_distribution_{}_{}".format(nz, seed), initial_distribution)
     np.save(folder+"Ot_{}_{}".format(nz, seed), Ot)
-    # np.save("graph/y_a", y_a)
+    np.save(folder+"y_{}_{}".format(nz, seed), y)
+    np.save(folder + "a_{}_{}".format(nz, seed), a)
+    np.save(folder + "O_{}_{}".format(nz, seed), O)
+    np.save("graph/y_a", y_a)
 
 
 def load(nz, seed, args):
@@ -506,8 +510,11 @@ def load(nz, seed, args):
     B = np.load(folder+"B_{}_{}.npy".format(nz, seed))
     initial_distribution = np.load(folder+"initial_distribution_{}_{}.npy".format(nz, seed))
     Ot = np.load(folder+"Ot_{}_{}.npy".format(nz, seed))
+    y = np.load(folder + "y_{}_{}.npy".format(nz, seed))
+    a = np.load(folder + "a_{}_{}.npy".format(nz, seed))
+    O = np.load(folder + "O_{}_{}.npy".format(nz, seed))
     y_a = np.load("graph/y_a.npy")
-    return A, B, initial_distribution, Ot, y_a
+    return A, B, initial_distribution, Ot, y_a, y, a, O
 
 
 if __name__ == "__main__":
@@ -516,26 +523,26 @@ if __name__ == "__main__":
     na = 4
     action_dict = {0: "N", 1: "S", 2: "E", 3: "W"}
     epsilon = 1e-8
-    if args.short_traj:
-        y, a, O, states = collect_sample_short_trajectory(na, n_history=10)
-    else:
-        y, a, O, states = collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
 
     if args.load_graph:
-        A, B, initial_distribution, Ot, y_a = load(nz, seed, args)
+        A, B, initial_distribution, Ot, y_a, y, a, O = load(nz, seed, args)
     else:
         if args.load_policy:
             bc.load_models_from_folder(args.models_folder)
+        if args.short_traj:
+            y, a, O, states = collect_sample_short_trajectory(na, n_history=10)
+        else:
+            y, a, O, states = collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
         A, B, initial_distribution, ny, na, nz, nO, Ot, y_a = initialization(y, a, O, N_eps_eval)
         A, B, initial_distribution = baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a,
-                                                N_eps_eval, 100, epsilon)
+                                                100, epsilon)
         if args.save_graph:
             save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args)
     if args.minimize:
         partition = minimize(A, B, Ot, nz, y_a, epsilon)
         Ar, Br, initial_distribution_r, nzr = reduce_A_B(A, B, initial_distribution, partition)
         Ar, Br, initial_distribution_r = baum_welch(y, a, O, Ar, Br, initial_distribution_r, ny, na, nzr, nO, Ot, y_a,
-                                                    N_eps_eval, 50, epsilon)
+                                                    50, epsilon)
     plot_A(A, y_a, Ar=Ar)
     plot_B(B, nz, Ot)
     plot_B(Br, nzr, Ot)
