@@ -3,6 +3,7 @@ import numpy as np
 import argparse
 import gym
 from train_manager import batch_creator
+import itertools
 
 import torch
 from torch.distributions import Categorical
@@ -26,9 +27,11 @@ parser.add_argument("--num_batches", type=int, help="Number of batches used in t
 parser.add_argument("--AIS_state_size", type=int, help="Size of the AIS vector in the neural network", default=25)
 parser.add_argument("--IPM", help="Options: `KL`, `MMD`", default='MMD')
 parser.add_argument("--seed", type=int, help="Random seed of the experiment", default=42)
-parser.add_argument("--load_policy", help="load the AIS model for trained optimal policy",action="store_true")
-parser.add_argument("--load_graph", help="load the parameters learned for the graph",action="store_true")
-parser.add_argument("--save_graph", help="load the parameters learned for the graph",action="store_true")
+parser.add_argument("--load_policy", help="Load the AIS model for trained optimal policy",action="store_true")
+parser.add_argument("--load_graph", help="Load the parameters learned for the graph",action="store_true")
+parser.add_argument("--save_graph", help="Save the parameters learned for the graph",action="store_true")
+parser.add_argument("--short_traj", help="Collect samples for short trajectory(not until reaching the goal)",action="store_true")
+parser.add_argument("--minimize", help="Run model minimization on learned graph",action="store_true")
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)',
                     default="results/CheeseMaze-v0_500_50_0.7_0.0001_0.0006_0.003_200_15000_25_KL_1/models/seed42")
 parser.add_argument("--AIS_pred_ncomp", type=int,
@@ -72,7 +75,6 @@ def collect_sample(bc, greedy=False, n_episodes=1):
         action = torch.zeros(bc.env.action_space.n)
         reward = 0.
         hidden = None
-
 
         obs_history = []
         action_history = []
@@ -118,6 +120,42 @@ def collect_sample(bc, greedy=False, n_episodes=1):
     return y, a, O, states
 
 
+def collect_sample_short_trajectory(na, n_history=10):
+    ns = 10
+    y = []
+    a = []
+    states = []
+    O = []
+    action_sequence = list(itertools.product(range(na), repeat=n_history))
+    for s in range(ns):
+        for i in action_sequence:
+            bc.env.reset()
+            bc.env.set(s)
+
+            obs_history = []
+            action_history = []
+            state_history = []
+            O_history = []
+
+            for action in i:
+                next_obs, reward, done, _ = bc.env.step(action)
+
+                obs_history.append(next_obs)  # + 1 to shift the index starting from 1
+                action_history.append(action)
+                O_history.append((reward,next_obs))
+                state_history.append(bc.env.current_state)
+
+                if done:
+                    break
+
+            y.append(obs_history)
+            a.append(action_history)
+            O.append(O_history)
+            states.append(state_history)
+
+    return y, a, O, states
+
+
 def initialization(y, a, O, n_episodes):
     ny = 7 #len(list(set(y[0])))
     na = 4 #len(list(set(a[0])))
@@ -155,7 +193,7 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a, n_e
     for n in range(n_iter):
         print('Iteration: ', n)
         if n%10 == 0 and args.save_graph:
-            save_graph(A, B, initial_distribution, Ot, y_a, nz, seed)
+            save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args)
         A_num = np.zeros((nz, ny, na, nz))
         A_den = np.zeros((nz, ny, na))
         B_num = np.zeros((nz, na, nO))
@@ -307,19 +345,23 @@ def minimize(A, B, Ot, nz, y_a, epsilon=1e-8):
     return partition
 
 
-def reduce_A_B(A, B, partition):
+def reduce_A_B(A, B, initial_distribution, partition):
     delete_ind = []
+    Ar = A.copy()
+    Br = B.copy()
+    initial_distribution_r = initial_distribution.copy()
     for block in partition:
         if len(block)>1:  # Equivalent states
             # Sum over probabilities transition to equivalent states
-            A[:, :, :, block[0]] = np.sum(A[:, :, :, block], axis=3)
+            Ar[:, :, :, block[0]] = np.sum(Ar[:, :, :, block], axis=3)
             # Delete equivalent states except for the first state
             delete_ind += block[1:]
-    A = np.delete(A,delete_ind, axis=0)
-    A = np.delete(A, delete_ind, axis=3)
-    B = np.delete(B, delete_ind, axis=0)
-    nz = B.shape[0]
-    return A, B, nz
+    Ar = np.delete(Ar,delete_ind, axis=0)
+    Ar = np.delete(Ar, delete_ind, axis=3)
+    Br = np.delete(Br, delete_ind, axis=0)
+    initial_distribution_r = np.delete(initial_distribution_r, delete_ind)
+    nz = Br.shape[0]
+    return Ar, Br, initial_distribution_r, nz
 
 
 def group_same_entry(X, block_B):
@@ -439,31 +481,31 @@ def plot_B(B,nz, Ot, state=None):
         plt.show()
 
 
-def save_graph(A, B, initial_distribution, Ot, y_a, nz, seed):
+def save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args):
     if args.load_policy:
-        np.save("graph/optimal_policy/A_{}_{}".format(nz, seed), A)
-        np.save("graph/optimal_policy/B_{}_{}".format(nz, seed), B)
-        np.save("graph/optimal_policy/initial_distribution_{}_{}".format(nz, seed), initial_distribution)
-        np.save("graph/optimal_policy/Ot_{}_{}".format(nz, seed), Ot)
+        folder = "graph/optimal_policy/"
+    elif args.short_traj:
+        folder = "graph/short_traj/"
     else:
-        np.save("graph/A_{}_{}".format(nz, seed), A)
-        np.save("graph/B_{}_{}".format(nz, seed), B)
-        np.save("graph/initial_distribution_{}_{}".format(nz, seed), initial_distribution)
-        np.save("graph/Ot_{}_{}".format(nz, seed), Ot)
-        # np.save("graph/y_a", y_a)
+        folder = "graph/"
+    np.save(folder+"A_{}_{}".format(nz, seed), A)
+    np.save(folder+"B_{}_{}".format(nz, seed), B)
+    np.save(folder+"initial_distribution_{}_{}".format(nz, seed), initial_distribution)
+    np.save(folder+"Ot_{}_{}".format(nz, seed), Ot)
+    # np.save("graph/y_a", y_a)
 
 
 def load(nz, seed, args):
     if args.load_policy:
-        A = np.load("graph/optimal_policy/A_{}_{}.npy".format(nz, seed))
-        B = np.load("graph/optimal_policy/B_{}_{}.npy".format(nz, seed))
-        initial_distribution = np.load("graph/optimal_policy/initial_distribution_{}_{}.npy".format(nz, seed))
-        Ot = np.load("graph/optimal_policy/Ot_{}_{}.npy".format(nz, seed))
+        folder = "graph/optimal_policy/"
+    elif args.short_traj:
+        folder = "graph/short_traj/"
     else:
-        A = np.load("graph/A_{}_{}.npy".format(nz, seed))
-        B = np.load("graph/B_{}_{}.npy".format(nz, seed))
-        initial_distribution = np.load("graph/initial_distribution_{}_{}.npy".format(nz, seed))
-        Ot = np.load("graph/Ot_{}_{}.npy".format(nz, seed))
+        folder = "graph/"
+    A = np.load(folder+"A_{}_{}.npy".format(nz, seed))
+    B = np.load(folder+"B_{}_{}.npy".format(nz, seed))
+    initial_distribution = np.load(folder+"initial_distribution_{}_{}.npy".format(nz, seed))
+    Ot = np.load(folder+"Ot_{}_{}.npy".format(nz, seed))
     y_a = np.load("graph/y_a.npy")
     return A, B, initial_distribution, Ot, y_a
 
@@ -471,25 +513,32 @@ def load(nz, seed, args):
 if __name__ == "__main__":
     bc = batch_creator(args, env, None, True)
     nz = 20
+    na = 4
     action_dict = {0: "N", 1: "S", 2: "E", 3: "W"}
     epsilon = 1e-8
+    if args.short_traj:
+        y, a, O, states = collect_sample_short_trajectory(na, n_history=10)
+    else:
+        y, a, O, states = collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
+
     if args.load_graph:
         A, B, initial_distribution, Ot, y_a = load(nz, seed, args)
     else:
         if args.load_policy:
             bc.load_models_from_folder(args.models_folder)
-        y, a, O, states = collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
         A, B, initial_distribution, ny, na, nz, nO, Ot, y_a = initialization(y, a, O, N_eps_eval)
         A, B, initial_distribution = baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a,
                                                 N_eps_eval, 100, epsilon)
-        partition = minimize(A, B, Ot, nz, y_a, epsilon)
-        Ar, Br, nzr = reduce_A_B(A, B, partition)
-        Ar, Br, initial_distribution = baum_welch(y, a, O, Ar, Br, initial_distribution, ny, na, nzr, nO, Ot, y_a,
-                                                N_eps_eval, 50, epsilon)
         if args.save_graph:
-            save_graph(A, B, initial_distribution, Ot, y_a, nz, seed)
+            save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args)
+    if args.minimize:
+        partition = minimize(A, B, Ot, nz, y_a, epsilon)
+        Ar, Br, initial_distribution_r, nzr = reduce_A_B(A, B, initial_distribution, partition)
+        Ar, Br, initial_distribution_r = baum_welch(y, a, O, Ar, Br, initial_distribution_r, ny, na, nzr, nO, Ot, y_a,
+                                                    N_eps_eval, 50, epsilon)
     plot_A(A, y_a, Ar=Ar)
     plot_B(B, nz, Ot)
+    plot_B(Br, nzr, Ot)
 
 
 

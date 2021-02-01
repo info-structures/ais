@@ -152,6 +152,8 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_episod
                         B[i, j] = B_num[i,j]/B_den[i]
         # Check marginalization
         # assert ((np.absolute(np.sum(B, axis=1) - np.ones((nz, na))) < epsilon).all())
+        # Re-normalize
+        B = B / np.sum(B, axis=1)[0]
 
         initial_distribution = initial_distribution_num/R
 
@@ -200,8 +202,8 @@ def minimize(A, B, Ot, nz, na, epsilon=1e-8):
         block_B = partition.pop(0)
         old_split = []
         for block_C in L:
-            for i in y_a:
-                # T(p in B, (y,a), q in C)
+            for i in range(na):
+                # T(p in B, a, q in C)
                 T = A[block_B, i[0], i[1], :][:,block_C]
                 # T(p in B, (y,a), C)
                 T = np.sum(T, axis=1)
@@ -365,15 +367,16 @@ def load(nz, seed, args):
 
 if __name__ == "__main__":
     bc = batch_creator(args, env, None, True)
-    nz = 11
+    nz = 15
+    na = 4
     action_dict = {0: "N", 1: "S", 2: "E", 3: "W"}
     epsilon = 1e-8
+    y, a, O, states = lg.collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
     if args.load_graph:
-        A, B, initial_distribution, Ot = load(nz, seed, args)
+        A, B, initial_distribution = load(nz, seed, args)
     else:
         if args.load_policy:
             bc.load_models_from_folder(args.models_folder)
-        y, a, O, states = lg.collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
         A, B, initial_distribution, ny, na, nz, nO, Ot = initialization(y, a, O, N_eps_eval)
         A, B, initial_distribution = baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot,
                                                 N_eps_eval, 100, epsilon)
