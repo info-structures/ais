@@ -127,31 +127,31 @@ def collect_sample_short_trajectory(na, n_history=10):
     states = []
     O = []
     action_sequence = list(itertools.product(range(na), repeat=n_history))
-    for s in range(ns):
-        for i in action_sequence:
-            bc.env.reset()
-            bc.env.set(s)
+    # for s in range(ns):
+    for i in action_sequence:
+        bc.env.reset()
+        # bc.env.set(s)
 
-            obs_history = []
-            action_history = []
-            state_history = []
-            O_history = []
+        obs_history = []
+        action_history = []
+        state_history = []
+        O_history = []
 
-            for action in i:
-                next_obs, reward, done, _ = bc.env.step(action)
+        for action in i:
+            next_obs, reward, done, _ = bc.env.step(action)
 
-                obs_history.append(next_obs)  # + 1 to shift the index starting from 1
-                action_history.append(action)
-                O_history.append((reward,next_obs))
-                state_history.append(bc.env.current_state)
+            obs_history.append(next_obs)  # + 1 to shift the index starting from 1
+            action_history.append(action)
+            O_history.append((reward,next_obs))
+            state_history.append(bc.env.current_state)
 
-                if done:
-                    break
+            if done:
+                break
 
-            y.append(obs_history)
-            a.append(action_history)
-            O.append(O_history)
-            states.append(state_history)
+        y.append(obs_history)
+        a.append(action_history)
+        O.append(O_history)
+        states.append(state_history)
 
     return y, a, O, states
 
@@ -193,7 +193,7 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a , n_
     for n in range(n_iter):
         print('Iteration: ', n)
         if n%10 == 0 and args.save_graph:
-            save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args)
+            save_graph(A, B, initial_distribution, Ot, nz, seed, args)
         A_num = np.zeros((nz, ny, na, nz))
         A_den = np.zeros((nz, ny, na))
         B_num = np.zeros((nz, na, nO))
@@ -482,7 +482,7 @@ def plot_B(B,nz, Ot, state=None):
         plt.show()
 
 
-def save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args):
+def save_graph(A, B, initial_distribution, Ot, nz, seed, args):
     if args.load_policy:
         folder = "graph/optimal_policy/"
     elif args.short_traj:
@@ -493,9 +493,18 @@ def save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args):
     np.save(folder+"B_{}_{}".format(nz, seed), B)
     np.save(folder+"initial_distribution_{}_{}".format(nz, seed), initial_distribution)
     np.save(folder+"Ot_{}_{}".format(nz, seed), Ot)
-    np.save(folder+"y_{}_{}".format(nz, seed), y)
-    np.save(folder + "a_{}_{}".format(nz, seed), a)
-    np.save(folder + "O_{}_{}".format(nz, seed), O)
+
+
+def save_trajectory(y, a, O, y_a, args):
+    if args.load_policy:
+        folder = "graph/optimal_policy/"
+    elif args.short_traj:
+        folder = "graph/short_traj/"
+    else:
+        folder = "graph/"
+    np.save(folder + "y", y)
+    np.save(folder + "action", a)
+    np.save(folder + "O", O)
     np.save("graph/y_a", y_a)
 
 
@@ -510,9 +519,9 @@ def load(nz, seed, args):
     B = np.load(folder+"B_{}_{}.npy".format(nz, seed))
     initial_distribution = np.load(folder+"initial_distribution_{}_{}.npy".format(nz, seed))
     Ot = np.load(folder+"Ot_{}_{}.npy".format(nz, seed))
-    y = np.load(folder + "y_{}_{}.npy".format(nz, seed))
-    a = np.load(folder + "a_{}_{}.npy".format(nz, seed))
-    O = np.load(folder + "O_{}_{}.npy".format(nz, seed))
+    y = np.load(folder + "y.npy", allow_pickle=True)
+    a = np.load(folder + "action.npy", allow_pickle=True)
+    O = np.load(folder + "O.npy", allow_pickle=True)
     y_a = np.load("graph/y_a.npy")
     return A, B, initial_distribution, Ot, y_a, y, a, O
 
@@ -536,8 +545,9 @@ if __name__ == "__main__":
         A, B, initial_distribution, ny, na, nz, nO, Ot, y_a = initialization(y, a, O, N_eps_eval)
         A, B, initial_distribution = baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a,
                                                 100, epsilon)
+        save_trajectory(y, a, O, y_a, args)
         if args.save_graph:
-            save_graph(A, B, initial_distribution, Ot, y_a, nz, seed, args)
+            save_graph(A, B, initial_distribution, Ot, nz, seed, args)
     if args.minimize:
         partition = minimize(A, B, Ot, nz, y_a, epsilon)
         Ar, Br, initial_distribution_r, nzr = reduce_A_B(A, B, initial_distribution, partition)
