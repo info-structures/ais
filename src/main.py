@@ -101,16 +101,16 @@ if __name__ == "__main__":
 		bc.create_batch()
 
 		#reinforce policy gradient update (backward view implemented here)
-		# returns = []
-		# current_eid = -1
-		# for i, r in enumerate(bc.reward_episode[::-1]):
-		# 	if current_eid != bc.episode_id[batch_size - i - 1]:
-		# 		R = 0
-		# 		current_eid = bc.episode_id[batch_size - i - 1]
-		# 	R = r + beta * R
-		# 	returns.insert(0,R)
-		# returns = torch.Tensor(returns)
-		# policy_loss = torch.sum(torch.mul(bc.policy_history, returns).mul(-1), -1)
+		returns = []
+		current_eid = -1
+		for i, r in enumerate(bc.reward_episode[::-1]):
+			if current_eid != bc.episode_id[batch_size - i - 1]:
+				R = 0
+				current_eid = bc.episode_id[batch_size - i - 1]
+			R = r + beta * R
+			returns.insert(0,R)
+		returns = torch.Tensor(returns)
+		policy_loss = torch.sum(torch.mul(bc.policy_history, returns).mul(-1), -1)
 
 		#update (\hat \rho) and (\hat P^y)
 		mse_loss = MSELoss()
