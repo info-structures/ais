@@ -32,6 +32,7 @@ parser.add_argument("--load_graph", help="Load the parameters learned for the gr
 parser.add_argument("--save_graph", help="Save the parameters learned for the graph",action="store_true")
 parser.add_argument("--short_traj", help="Collect samples for short trajectory(not until reaching the goal)",action="store_true")
 parser.add_argument("--minimize", help="Run model minimization on learned graph",action="store_true")
+parser.add_argument("--env_not_terminate", help="Simulation does not terminate when goal state is reached",action="store_true")
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)',
                     default="results/CheeseMaze-v0_500_50_0.7_0.0001_0.0006_0.003_200_15000_25_KL_1/models/seed42")
 parser.add_argument("--AIS_pred_ncomp", type=int,
@@ -80,7 +81,7 @@ def collect_sample(bc, greedy=False, n_episodes=1):
         action_history = []
         state_history = []
         O_history = []
-        for j in range(1000):
+        for j in range(15): #range(1000):
             rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
             ais_z, hidden = bc.rho(rho_input, hidden)
             ais_z = ais_z.reshape(-1)
@@ -110,12 +111,12 @@ def collect_sample(bc, greedy=False, n_episodes=1):
                 current_obs = next_obs
                 current_obs = bc.convert_int_to_onehot(current_obs, bc.env.observation_space.n)
 
-            if done:
-                y.append(obs_history)
-                a.append(action_history)
-                O.append(O_history)
-                states.append(state_history)
-                break
+            # if done:
+        y.append(obs_history)
+        a.append(action_history)
+        O.append(O_history)
+        states.append(state_history)
+                # break
 
     return y, a, O, states
 
@@ -487,6 +488,8 @@ def save_graph(A, B, initial_distribution, Ot, nz, seed, args):
         folder = "graph/optimal_policy/"
     elif args.short_traj:
         folder = "graph/short_traj/"
+    elif args.env_not_terminate:
+        folder = "graph/env_not_terminate/"
     else:
         folder = "graph/"
     np.save(folder+"A_{}_{}".format(nz, seed), A)
@@ -500,6 +503,8 @@ def save_trajectory(y, a, O, y_a, args):
         folder = "graph/optimal_policy/"
     elif args.short_traj:
         folder = "graph/short_traj/"
+    elif args.env_not_terminate:
+        folder = "graph/env_not_terminate/"
     else:
         folder = "graph/"
     np.save(folder + "y", y)
@@ -508,40 +513,59 @@ def save_trajectory(y, a, O, y_a, args):
     np.save("graph/y_a", y_a)
 
 
-def load(nz, seed, args):
+def load_graph(nz, seed, args):
     if args.load_policy:
         folder = "graph/optimal_policy/"
     elif args.short_traj:
         folder = "graph/short_traj/"
+    elif args.env_not_terminate:
+        folder = "graph/env_not_terminate/"
     else:
         folder = "graph/"
     A = np.load(folder+"A_{}_{}.npy".format(nz, seed))
     B = np.load(folder+"B_{}_{}.npy".format(nz, seed))
     initial_distribution = np.load(folder+"initial_distribution_{}_{}.npy".format(nz, seed))
     Ot = np.load(folder+"Ot_{}_{}.npy".format(nz, seed))
+
+    return A, B, initial_distribution, Ot
+
+
+def load_trajectory(args):
+    if args.load_policy:
+        folder = "graph/optimal_policy/"
+    elif args.short_traj:
+        folder = "graph/short_traj/"
+    elif args.env_not_terminate:
+        folder = "graph/env_not_terminate/"
+    else:
+        folder = "graph/"
     y = np.load(folder + "y.npy", allow_pickle=True)
     a = np.load(folder + "action.npy", allow_pickle=True)
     O = np.load(folder + "O.npy", allow_pickle=True)
     y_a = np.load("graph/y_a.npy")
-    return A, B, initial_distribution, Ot, y_a, y, a, O
+    return y_a, y, a, O
 
 
 if __name__ == "__main__":
     bc = batch_creator(args, env, None, True)
     nz = 20
     na = 4
+    ny = 7
+    nO = 7
     action_dict = {0: "N", 1: "S", 2: "E", 3: "W"}
     epsilon = 1e-8
 
     if args.load_graph:
-        A, B, initial_distribution, Ot, y_a, y, a, O = load(nz, seed, args)
+        A, B, initial_distribution, Ot  = load_graph(nz, seed, args)
+        y_a, y, a, O = load_trajectory(args)
+        Ot = to_tuple(Ot)
     else:
         if args.load_policy:
             bc.load_models_from_folder(args.models_folder)
         if args.short_traj:
             y, a, O, states = collect_sample_short_trajectory(na, n_history=10)
         else:
-            y, a, O, states = collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
+            y, a, O, states = collect_sample(bc, greedy=False, n_episodes=5000)
         A, B, initial_distribution, ny, na, nz, nO, Ot, y_a = initialization(y, a, O, N_eps_eval)
         A, B, initial_distribution = baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a,
                                                 100, epsilon)
