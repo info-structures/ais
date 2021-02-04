@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import gym
+from random import sample
 import learn_graph as lg
 from train_manager import batch_creator
 
@@ -30,13 +31,18 @@ parser.add_argument("--seed", type=int, help="Random seed of the experiment", de
 parser.add_argument("--load_policy", help="load the AIS model for trained optimal policy",action="store_true")
 parser.add_argument("--load_graph", help="load the parameters learned for the graph",action="store_true")
 parser.add_argument("--save_graph", help="load the parameters learned for the graph",action="store_true")
+parser.add_argument("--minimize", help="Run model minimization on learned graph",action="store_true")
 parser.add_argument("--models_folder", type=str, help='Pretrained model (state dict)',
                     default="results/CheeseMaze-v0_500_50_0.7_0.0001_0.0006_0.003_200_15000_25_KL_1/models/seed42")
+
 parser.add_argument("--AIS_pred_ncomp", type=int,
                     help="Number of Components used in the GMM to predict next AIS (For MiniGrid+KL)", default=5)
 
 args = parser.parse_args()
 
+args.pomdp = True
+args.short_traj = False
+args.env_not_terminate = False
 env = gym.make(args.env_name)
 eval_frequency = args.eval_frequency
 N_eps_eval = args.N_eps_eval
@@ -56,6 +62,44 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 env.seed(seed)
 
+def collect_sample(na, n_episodes=500, n_history=15):
+    y = []
+    a = []
+    states = []
+    O = []
+    for n_eps in range(n_episodes):
+        next_obs = bc.env.reset()
+        reward = 0
+        action = 0   # In reality, undefined; just place holder
+
+        obs_history = []
+        action_history = []
+        state_history = []
+        O_history = []
+
+        obs_history.append(next_obs)  # + 1 to shift the index starting from 1
+        action_history.append(action)
+        O_history.append((reward, next_obs))
+        state_history.append(bc.env.current_state)
+
+        for j in range(n_history):
+            action = np.random.randint(0,na)
+            next_obs, reward, done, _ = bc.env.step(action)
+
+            obs_history.append(next_obs)  # + 1 to shift the index starting from 1
+            action_history.append(action)
+            O_history.append((reward,next_obs))
+            state_history.append(bc.env.current_state)
+
+            # if done:
+            #     break
+
+        y.append(obs_history)
+        a.append(action_history)
+        O.append(O_history)
+        states.append(state_history)
+
+    return y, a, O, states
 
 def initialization(O, n_episodes):
     ny = 7 #len(list(set(y[0])))
@@ -65,6 +109,10 @@ def initialization(O, n_episodes):
         Ot += O[r]
     # list of unique (reward, observation) pairs
     Ot = list(set(Ot))
+    # sort paris by observation
+    Ot.sort(key=lambda x: x[1])
+    # remove the undefined (reward, observation) at time=0
+    Ot.remove((0,6))
     nO = len(Ot)
 
     # Initialization
@@ -81,14 +129,17 @@ def initialization(O, n_episodes):
     return A, B, initial_distribution, ny, na, nz, nO, Ot
 
 
-def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_iter=100, epsilon=1e-8):
+def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_iter=100, epsilon=1e-8, pred_O=True):
     for n in range(n_iter):
         print('Iteration: ', n)
         if n%10 == 0 and args.save_graph:
             save_graph(A, B, initial_distribution, Ot, nz, seed)
         A_num = np.zeros((nz, na, nz))
         A_den = np.zeros((nz, na))
-        B_num = np.zeros((nz, ny))
+        if pred_O:
+            B_num = np.zeros((nz, nO))
+        else:
+            B_num = np.zeros((nz, ny))
         B_den = np.zeros(nz)
         initial_distribution_num = np.zeros(nz)
         n_episodes = len(y)
@@ -101,14 +152,17 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_iter=1
             if T<=1:
                 R -= 1
             else:
-                alpha = forward(A, B, initial_distribution, nz, yr, ar, Or, Ot)
-                beta = backward(A, B, nz, yr, ar, Or, Ot)
+                alpha = forward(A, B, initial_distribution, nz, yr, ar, Or, Ot, pred_O)
+                beta = backward(A, B, nz, yr, ar, Or, Ot, pred_O)
 
                 xi = np.zeros((nz, nz, T-1))
                 for t in range(T-1):
                     denominator = np.dot(alpha[:, t], beta[:, t])
                     for i in range(nz):
-                        numerator = alpha[i, t] * A[i, ar[t], :] * B[:, yr[t+1]] * beta[:, t+1]
+                        if pred_O:
+                            numerator = alpha[i, t] * A[i, ar[t + 1], :] * B[:, Ot.index(Or[t+1])] * beta[:, t + 1]
+                        else:
+                            numerator = alpha[i, t] * A[i, ar[t+1], :] * B[:, yr[t+1]] * beta[:, t+1]
                         if denominator == 0:
                             xi[i, :, t] = np.zeros(nz)
                         else:
@@ -120,8 +174,8 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_iter=1
 
 
                 for k in range(na):
-                    A_num[:,k,:] += np.sum(xi[:,:,(ar[0:T-1]==k)],axis=2)
-                    A_den[:,k] += np.sum(gamma[:,(ar[0:T-1]==k)], axis=1)
+                    A_num[:,k,:] += np.sum(xi[:,:,(ar[1:T]==k)],axis=2)
+                    A_den[:,k] += np.sum(gamma[:,(ar[1:T]==k)], axis=1)
 
                 # Add gamma at T
                 if np.dot(alpha[:, -1], beta[:, -1]) ==0:
@@ -130,9 +184,16 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_iter=1
                     gammaT =  np.array(alpha[:,-1]*beta[:,-1]/np.dot(alpha[:, -1], beta[:, -1])).reshape((-1,1))
                 gamma = np.hstack((gamma, gammaT))
 
-                for j in range(ny):
-                    B_num[:, j] += np.sum(gamma[:,(yr==j)], axis=1)
-                    B_den[:] += np.sum(gamma, axis=1)
+                if pred_O:
+                    for j in range(nO):
+                        match_O = np.array(Or) == np.array(Ot)[j]
+                        ind_O = match_O[:, 0] * match_O[:, 1]
+                        B_num[:, j] += np.sum(gamma[:,ind_O], axis=1)
+                        B_den[:] += np.sum(gamma, axis=1)
+                else:
+                    for j in range(ny):
+                        B_num[:, j] += np.sum(gamma[:,(yr==j)], axis=1)
+                        B_den[:] += np.sum(gamma, axis=1)
 
 
         for i in range(nz):
@@ -146,11 +207,18 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_iter=1
         # assert ((np.absolute(np.sum(A,axis=2)- np.ones((nz, ny, na)))< epsilon).all())
 
         for i in range(nz):
-            for j in range(ny):
-                    if B_den[i] < epsilon:
-                        B[i, j] = 0
-                    else:
-                        B[i, j] = B_num[i,j]/B_den[i]
+            if pred_O:
+                for j in range(nO):
+                        if B_den[i] < epsilon:
+                            B[i, j] = 0
+                        else:
+                            B[i, j] = B_num[i,j]/B_den[i]
+            else:
+                for j in range(ny):
+                        if B_den[i] < epsilon:
+                            B[i, j] = 0
+                        else:
+                            B[i, j] = B_num[i,j]/B_den[i]
         # Check marginalization
         # assert ((np.absolute(np.sum(B, axis=1) - np.ones((nz, na))) < epsilon).all())
         # Re-normalize
@@ -161,26 +229,41 @@ def baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, n_iter=1
     return A, B, initial_distribution
 
 
-def forward(A, B, initial_distribution, nz, y, a, O, Ot):
+def forward(A, B, initial_distribution, nz, y, a, O, Ot, pred_O):
     T = len(y)
     alpha = np.zeros((nz, T))
-    alpha[:,0] = initial_distribution * B[:, y[0]]
+    if pred_O:
+        try:
+            alpha[:, 0] = initial_distribution * B[:,Ot.index(O[0])]
+        except:
+            # O = (r,y). Only y0 known. Sample the index with y0
+            index = [i for i, value in enumerate(Ot) if value[1]==O[0][1]]
+            ind = sample(index,1)[0]
+            alpha[:, 0] = initial_distribution * B[:, ind]
+    else:
+        alpha[:,0] = initial_distribution * B[:, y[0]]
 
     for t in range(1,T):
         for j in range(nz):
-            alpha[j,t] = alpha[:,t-1].dot(A[:,a[t-1],j])*B[j,y[t]]
+            if pred_O:
+                alpha[j, t] = alpha[:, t - 1].dot(A[:, a[t], j]) * B[j, Ot.index(O[t])]
+            else:
+                alpha[j,t] = alpha[:,t-1].dot(A[:,a[t],j])*B[j,y[t]]
 
     return alpha
 
 
-def backward(A, B, nz, y, a, O, Ot):
+def backward(A, B, nz, y, a, O, Ot, pred_O):
     T = len(y)
     beta = np.zeros((nz, T))
     beta[:,T-1] = np.ones(nz)
 
     for t in range(T-2,-1,-1):
         for j in range(nz):
-            beta[j, t] = (beta[:, t+1]*B[:, y[t+1]]).dot(A[j, a[t], :])
+            if pred_O:
+                beta[j, t] = (beta[:, t + 1] * B[:, Ot.index(O[t+1])]).dot(A[j, a[t + 1], :])
+            else:
+                beta[j, t] = (beta[:, t+1]*B[:, y[t+1]]).dot(A[j, a[t+1], :])
 
     return beta
 
@@ -200,34 +283,35 @@ def minimize(A, B, Ot, nz, na, epsilon=1e-8):
     stable = False
     while not stable:
         L = partition.copy()
-        block_B = partition.pop(0)
-        old_split = []
-        for block_C in L:
-            for i in range(na):
-                # T(p in B, a, q in C)
-                T = A[block_B, i[0], i[1], :][:,block_C]
-                # T(p in B, (y,a), C)
-                T = np.sum(T, axis=1)
-                T[T<epsilon]=0    # eliminate floating number error
-                T[np.absolute(T-1)<epsilon] = 1
-                split_T = group_same_entry(T, block_B)
+        for block_B in L:
+            old_split = []
+            partition.remove(block_B)
+            for block_C in L:
+                for i in range(na):
+                    # T(p in B, a, q in C)
+                    T = A[block_B, i, :][:,block_C]
+                    # T(p in B, (y,a), C)
+                    T = np.sum(T, axis=1)
+                    T[T<epsilon]=0    # eliminate floating number error
+                    T[np.absolute(T-1)<epsilon] = 1
+                    split_T = lg.group_same_entry(T, block_B)
 
-                O = []
-                for p in block_B:
-                    O_ind = np.where(B[p, i[1], :]>epsilon)[0]
-                    O.append(O_ind)
-                split_O = group_same_entry(O, block_B)
+                    O = []
+                    for p in block_B:
+                        O_ind = np.where(B[p, :]>epsilon)[0]
+                        O.append(O_ind)
+                    split_O = lg.group_same_entry(O, block_B)
 
-                new_split = intersect_partition(split_T, split_O)
+                    new_split = lg.intersect_partition(split_T, split_O)
 
-                if old_split == []:
-                    old_split = new_split.copy()
-                else:
-                    split = intersect_partition(old_split, new_split)
-                    old_split = split.copy()
-        for s in split:
-            partition.append(s)
-        if compare_partition(L, partition):
+                    if old_split == []:
+                        old_split = new_split.copy()
+                    else:
+                        split = lg.intersect_partition(old_split, new_split)
+                        old_split = split.copy()
+            for s in split:
+                partition.append(s)
+        if lg.compare_partition(L, partition):
             stable = True
     return partition
 
@@ -249,60 +333,6 @@ def reduce_A_B(A, B, initial_distribution, partition):
     initial_distribution_r = np.delete(initial_distribution_r, delete_ind)
     nz = Br.shape[0]
     return Ar, Br, initial_distribution_r, nz
-
-
-def group_same_entry(X, block_B):
-    dict = {}
-    for i in range(len(X)):
-        if str(X[i]) not in dict.keys():
-            dict[str(X[i])] = [block_B[i]]
-        else:
-            dict[str(X[i])].append(block_B[i])
-    split = []
-    for key in dict.keys():
-        split.append(dict[key])
-    return split
-
-
-def intersect_partition(s1, s2):
-    s1_copy = s1.copy()
-    for b1 in s1_copy:
-        if b1 not in s2:
-            s1.remove(b1)
-            for b2 in s2:
-                i = intersection(b1, b2)
-                if i !=[]:
-                    s1.append(i)
-    return s1
-
-
-def compare_partition(p1, p2):
-    p2_set = [set(s) for s in p2]
-    for p in p1:
-        if set(p) not in p2_set:
-            return False
-    return True
-
-def intersection(b1, b2):
-    return list(set(b1)&set(b2))
-
-
-def to_tuple(X):
-    return [(i[0], i[1]) for i in X]
-
-
-def observation_count(y):
-    dict = {}
-    num_total_obs = 0
-    for obs in y:
-        for o in obs:
-            num_total_obs += 1
-            if o not in dict.keys():
-                dict[o] = 0
-            else:
-                dict[o] += 1
-    for key in dict.keys():
-        print("Obs {} appear {}".format(key+1, dict[key]/num_total_obs))
 
 
 def plot_A(A,na, obs=None, Ar=None):
@@ -372,26 +402,30 @@ def load(nz, seed, args):
 
 if __name__ == "__main__":
     bc = batch_creator(args, env, None, True)
-    nz = 11
+    nz = 20
     na = 4
     action_dict = {0: "N", 1: "S", 2: "E", 3: "W"}
     epsilon = 1e-8
 
     if args.load_graph:
-        A, B, initial_distribution = load(nz, seed, args)
+        A, B, initial_distribution, Ot = lg.load_graph(nz, seed, args)
+        y_a, y, a, O = lg.load_trajectory(args)
+        Ot = lg.to_tuple(Ot)
     else:
         if args.load_policy:
             bc.load_models_from_folder(args.models_folder)
-        y, a, O, states = lg.collect_sample(bc, greedy=False, n_episodes=N_eps_eval)
+        y, a, O, states = collect_sample(na, n_episodes=500)
         A, B, initial_distribution, ny, na, nz, nO, Ot = initialization(O, N_eps_eval)
         A, B, initial_distribution = baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot,
-                                                100, epsilon)
-        # partition = minimize(A, B, Ot, nz, a, epsilon)
-        # Ar, Br, nzr = reduce_A_B(A, B, partition)
-        # Ar, Br, initial_distribution = baum_welch(y, a, O, Ar, Br, initial_distribution, ny, na, nzr, nO, Ot,
-        #                                           50, epsilon)
+                                                100, epsilon, pred_O=True)
+        lg.save_trajectory(y, a, O, None, args)
         if args.save_graph:
-            save_graph(A, B, initial_distribution, Ot, nz, seed)
+            lg.save_graph(A, B, initial_distribution, Ot, nz, seed, args)
+    if args.minimize:
+        partition = minimize(A, B, Ot, nz, na, epsilon=1e-5)
+        Ar, Br, initial_distribution_r, nzr = reduce_A_B(A, B, initial_distribution, partition)
+        Ar, Br, initial_distribution = baum_welch(y, a, O, Ar, Br, initial_distribution, ny, na, nzr, nO, Ot,
+                                                  50, epsilon)
     plot_A(A, na)
     plot_B(B)
 

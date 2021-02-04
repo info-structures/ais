@@ -9,7 +9,7 @@ parser.add_argument("--env_not_terminate", help="Simulation does not terminate w
 args = parser.parse_args()
 args.load_policy = False
 
-def value_iteration(A, B, nz, na, epsilon=0.0001, discount_factor=1.0):
+def value_iteration(A, B, nz, na, epsilon=0.0001, discount_factor=0.95):
     """
     Value Iteration Algorithm.
 
@@ -78,52 +78,45 @@ def value_iteration(A, B, nz, na, epsilon=0.0001, discount_factor=1.0):
     return policy, V
 
 
-# def eval_performance(n_episodes=100):
-#         for n_eps in range(n_episodes):
-#             reward_episode = []
-#             y = lg.env.reset()
-#             action = random.randint(0,3)
-#             reward = 0.
-#
-#
-#             for j in range(1000):
-#                 rho_input = torch.cat((current_obs, action, torch.Tensor([reward]))).reshape(1, 1, -1)
-#                 ais_z, hidden = self.rho(rho_input, hidden)
-#                 ais_z = ais_z.reshape(-1)
-#
-#                 policy_probs = self.policy(ais_z.detach())
-#                 if greedy:
-#                     c = Categorical(policy_probs)
-#                     _, action = policy_probs.max(0)
-#                 else:
-#                     c = Categorical(policy_probs)
-#                     action = c.sample()
-#                 next_obs, reward, done, _ = env.step(action)
-#                 reward_episode.append(reward)
-#
-#                 if self.args.env_name[:8] == 'MiniGrid':
-#                     current_obs = next_obs['image']
-#                     current_obs = self.get_encoded_obs(current_obs)
-#                 else:
-#                     current_obs = next_obs
-#                     current_obs = self.convert_int_to_onehot(current_obs, self.env.observation_space.n)
-#
-#                 if done:
-#                     break
-#
-#             rets = []
-#             R = 0
-#             for i, r in enumerate(reward_episode[::-1]):
-#                 R = r + beta * R
-#                 rets.insert(0, R)
-#             returns = torch.cat((returns, rets[0].reshape(-1)))
-#
-#     return np.mean(returns)
+def eval_performance(policy, A, n_episodes=100, epsilon=1e-8, beta=0.95):
+    returns = []
+    for n_eps in range(n_episodes):
+        reward_episode = []
+        y = lg.env.reset()
+        while True:
+            # sample z from initial distribution
+            z = np.where(np.random.multinomial(1,initial_distribution)==1)[0][0]
+            # check z agrees with the first observation
+            if (A[:,y,:, z]>epsilon).any():
+                break
+
+
+        for j in range(1000):
+            action = np.arange(na)[policy[z].astype(bool)][0]
+
+            y, reward, done, _ = lg.env.step(action)
+            reward_episode.append(reward)
+
+            z = np.where(np.random.multinomial(1, A[z, y, action, :]) == 1)[0][0]
+
+            if done:
+                break
+
+        rets = []
+        R = 0
+        for i, r in enumerate(reward_episode[::-1]):
+            R = r + beta * R
+            rets.insert(0, R)
+        returns.append(rets[0])
+
+    return np.mean(returns)
 
 if __name__ == "__main__":
-    nz = 13
-    seed = 42
+    nz = 17
+    seed = 66
     A, B, initial_distribution, Ot = lg.load_graph(nz, seed, args)
     na = B.shape[1]
     assert(na==4)
     policy, v = value_iteration(A, B, nz, na, discount_factor = 0.95)
+    returns = eval_performance(policy, A)
+    print("Performance: ",returns)

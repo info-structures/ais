@@ -40,6 +40,7 @@ parser.add_argument("--AIS_pred_ncomp", type=int,
 
 args = parser.parse_args()
 
+args.pomdp = False
 env = gym.make(args.env_name)
 eval_frequency = args.eval_frequency
 N_eps_eval = args.N_eps_eval
@@ -60,7 +61,7 @@ torch.manual_seed(seed)
 env.seed(seed)
 
 
-def collect_sample(bc, greedy=False, n_episodes=1):
+def collect_sample(bc, greedy=False, n_episodes=500):
     y = []
     a = []
     states = []
@@ -167,6 +168,8 @@ def initialization(y, a, O, n_episodes):
         y_a += list(zip(y[r],a[r]))
     # list of unique (reward, observation) pairs
     Ot = list(set(Ot))
+    # sort paris by observation
+    Ot.sort(key=lambda x: x[1])
     y_a = list(set(y_a))
     nO = len(Ot)
 
@@ -315,33 +318,34 @@ def minimize(A, B, Ot, nz, y_a, epsilon=1e-8):
     stable = False
     while not stable:
         L = partition.copy()
-        block_B = partition.pop(0)
-        old_split = []
-        for block_C in L:
-            for i in y_a:
-                # T(p in B, (y,a), q in C)
-                T = A[block_B, i[0], i[1], :][:,block_C]
-                # T(p in B, (y,a), C)
-                T = np.sum(T, axis=1)
-                T[T<epsilon]=0    # eliminate floating number error
-                T[np.absolute(T-1)<epsilon] = 1
-                split_T = group_same_entry(T, block_B)
+        for block_B in L:
+            old_split = []
+            partition.remove(block_B)
+            for block_C in L:
+                for i in y_a:
+                    # T(p in B, (y,a), q in C)
+                    T = A[block_B, i[0], i[1], :][:,block_C]
+                    # T(p in B, (y,a), C)
+                    T = np.sum(T, axis=1)
+                    T[T<epsilon]=0    # eliminate floating number error
+                    T[np.absolute(T-1)<epsilon] = 1
+                    split_T = group_same_entry(T, block_B)
 
-                O = []
-                for p in block_B:
-                    O_ind = np.where(B[p, i[1], :]>epsilon)[0]
-                    O.append(O_ind)
-                split_O = group_same_entry(O, block_B)
+                    O = []
+                    for p in block_B:
+                        O_ind = np.where(B[p, i[1], :]>epsilon)[0]
+                        O.append(O_ind)
+                    split_O = group_same_entry(O, block_B)
 
-                new_split = intersect_partition(split_T, split_O)
+                    new_split = intersect_partition(split_T, split_O)
 
-                if old_split == []:
-                    old_split = new_split.copy()
-                else:
-                    split = intersect_partition(old_split, new_split)
-                    old_split = split.copy()
-        for s in split:
-            partition.append(s)
+                    if old_split == []:
+                        old_split = new_split.copy()
+                    else:
+                        split = intersect_partition(old_split, new_split)
+                        old_split = split.copy()
+            for s in split:
+                partition.append(s)
         if compare_partition(L, partition):
             stable = True
     return partition
@@ -490,6 +494,8 @@ def save_graph(A, B, initial_distribution, Ot, nz, seed, args):
         folder = "graph/short_traj/"
     elif args.env_not_terminate:
         folder = "graph/env_not_terminate/"
+    elif args.pomdp:
+        folder = "graph/pomdp/"
     else:
         folder = "graph/"
     np.save(folder+"A_{}_{}".format(nz, seed), A)
@@ -505,12 +511,14 @@ def save_trajectory(y, a, O, y_a, args):
         folder = "graph/short_traj/"
     elif args.env_not_terminate:
         folder = "graph/env_not_terminate/"
+    elif args.pomdp:
+        folder = "graph/pomdp/"
     else:
         folder = "graph/"
     np.save(folder + "y", y)
     np.save(folder + "action", a)
     np.save(folder + "O", O)
-    np.save("graph/y_a", y_a)
+    # np.save("graph/y_a", y_a)
 
 
 def load_graph(nz, seed, args):
@@ -520,6 +528,8 @@ def load_graph(nz, seed, args):
         folder = "graph/short_traj/"
     elif args.env_not_terminate:
         folder = "graph/env_not_terminate/"
+    elif args.pomdp:
+        folder = "graph/pomdp/"
     else:
         folder = "graph/"
     A = np.load(folder+"A_{}_{}.npy".format(nz, seed))
@@ -537,6 +547,8 @@ def load_trajectory(args):
         folder = "graph/short_traj/"
     elif args.env_not_terminate:
         folder = "graph/env_not_terminate/"
+    elif args.pomdp:
+        folder = "graph/pomdp/"
     else:
         folder = "graph/"
     y = np.load(folder + "y.npy", allow_pickle=True)
@@ -566,6 +578,7 @@ if __name__ == "__main__":
             y, a, O, states = collect_sample_short_trajectory(na, n_history=10)
         else:
             y, a, O, states = collect_sample(bc, greedy=False, n_episodes=5000)
+        observation_count(y)
         A, B, initial_distribution, ny, na, nz, nO, Ot, y_a = initialization(y, a, O, N_eps_eval)
         A, B, initial_distribution = baum_welch(y, a, O, A, B, initial_distribution, ny, na, nz, nO, Ot, y_a,
                                                 100, epsilon)
@@ -577,6 +590,8 @@ if __name__ == "__main__":
         Ar, Br, initial_distribution_r, nzr = reduce_A_B(A, B, initial_distribution, partition)
         Ar, Br, initial_distribution_r = baum_welch(y, a, O, Ar, Br, initial_distribution_r, ny, na, nzr, nO, Ot, y_a,
                                                     50, epsilon)
+    else:
+        Ar, Br, initial_distribution_r, Ot = load_graph(12, seed, args)
     plot_A(A, y_a, Ar=Ar)
     plot_B(B, nz, Ot)
     plot_B(Br, nzr, Ot)
