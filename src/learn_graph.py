@@ -424,6 +424,32 @@ def observation_count(y):
         print("Obs {} appear {}".format(key+1, dict[key]/num_total_obs))
 
 
+def eval_model(A, B, initial_distribution, y, a, O, Ot):
+    num_error = 0
+    for r in range(len(y)):
+        yr = np.array(y[r])
+        ar = np.array(a[r])
+        Or = O[r]
+        while True:
+            # sample z from initial distribution
+            z = np.where(np.random.multinomial(1,initial_distribution)==1)[0][0]
+            # check z agrees with the first observation
+            if (A[z,yr[0],ar[0], :]>epsilon).any():
+                break
+        for t in range(len(yr)):
+            # Sample output from distribution
+            try:
+                O_pred_ind = np.where(np.random.multinomial(1, B[z, ar[t], :]) == 1)[0][0]
+            except:
+                O_pred_ind = np.where(np.random.multinomial(1, B[z, ar[t], :]/np.sum(B[z, ar[t], :])) == 1)[0][0]
+            # # Pick the most likely output
+            # O_pred_ind = B[z, ar[t], :].argmax()
+            if O_pred_ind != Ot.index((Or[t][0], Or[t][1])):
+                num_error += 1
+            z = np.where(np.random.multinomial(1, A[z, yr[t], ar[t], :]) == 1)[0][0]
+    print("Wrong (reward, observation) prediction rate: ", num_error/len(y)/len(yr))
+
+
 def plot_A(A,y_a, obs=None, Ar=None):
     """
     obs: if not None, only plot A with observation y=obs; else plot all A's
@@ -591,7 +617,9 @@ if __name__ == "__main__":
         Ar, Br, initial_distribution_r = baum_welch(y, a, O, Ar, Br, initial_distribution_r, ny, na, nzr, nO, Ot, y_a,
                                                     50, epsilon)
     else:
-        Ar, Br, initial_distribution_r, Ot = load_graph(12, seed, args)
+        nzr = 15
+        Ar, Br, initial_distribution_r, _ = load_graph(nzr, seed, args)
+    eval_model(A, B, initial_distribution, y, a, O, Ot)
     plot_A(A, y_a, Ar=Ar)
     plot_B(B, nz, Ot)
     plot_B(Br, nzr, Ot)

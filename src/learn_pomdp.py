@@ -365,7 +365,6 @@ def plot_A(A,na, obs=None, Ar=None):
             plt.show()
 
 
-
 def plot_B(B):
     plt.imshow(B)
     plt.title("P(y(t)|z(t)")
@@ -373,31 +372,6 @@ def plot_B(B):
     plt.ylabel("z(t)")
     plt.colorbar()
     plt.show()
-
-
-def save_graph(A, B, initial_distribution, Ot, nz, seed):
-    if args.load_policy:
-        np.save("graph/pomdp/optimal_policy/A_{}_{}".format(nz, seed), A)
-        np.save("graph/pomdp/optimal_policy/B_{}_{}".format(nz, seed), B)
-        np.save("graph/pomdp/optimal_policy/initial_distribution_{}_{}".format(nz, seed), initial_distribution)
-        np.save("graph/pomdp/optimal_policy/Ot_{}_{}".format(nz, seed), Ot)
-    else:
-        np.save("graph/pomdp/A_{}_{}".format(nz, seed), A)
-        np.save("graph/pomdp/B_{}_{}".format(nz, seed), B)
-        np.save("graph/pomdp/initial_distribution_{}_{}".format(nz, seed), initial_distribution)
-        np.save("graph/pomdp/Ot_{}_{}".format(nz, seed), Ot)
-
-
-def load(nz, seed, args):
-    if args.load_policy:
-        A = np.load("graph/pomdp/optimal_policy/A_{}_{}.npy".format(nz, seed))
-        B = np.load("graph/pomdp/optimal_policy/B_{}_{}.npy".format(nz, seed))
-        initial_distribution = np.load("graph/pomdp/optimal_policy/initial_distribution_{}_{}.npy".format(nz, seed))
-    else:
-        A = np.load("graph/pomdp/A_{}_{}.npy".format(nz, seed))
-        B = np.load("graph/pomdp/B_{}_{}.npy".format(nz, seed))
-        initial_distribution = np.load("graph/pomdp/initial_distribution_{}_{}.npy".format(nz, seed))
-    return A, B, initial_distribution
 
 
 if __name__ == "__main__":

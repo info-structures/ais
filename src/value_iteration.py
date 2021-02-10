@@ -112,11 +112,12 @@ def eval_performance(policy, A, n_episodes=100, epsilon=1e-8, beta=0.95):
     return np.mean(returns)
 
 if __name__ == "__main__":
-    nz = 17
-    seed = 66
+    nz = 15
+    seed = 60
     A, B, initial_distribution, Ot = lg.load_graph(nz, seed, args)
     na = B.shape[1]
     assert(na==4)
     policy, v = value_iteration(A, B, nz, na, discount_factor = 0.95)
     returns = eval_performance(policy, A)
     print("Performance: ",returns)
+    # lg.plot_B(B, nz, Ot)
