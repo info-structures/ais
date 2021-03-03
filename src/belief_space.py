@@ -31,12 +31,12 @@ nb = 15
 uniform_distribution = np.ones(nx)/nx
 initial_distribution = np.random.rand(nx, nb)
 initial_distribution = initial_distribution/np.sum(initial_distribution,axis=0)
-b0 = np.hstack((uniform_distribution.reshape((-1,1)), initial_distribution))
-
+# b0 = np.hstack((uniform_distribution.reshape((-1,1)), initial_distribution))
+b0 = uniform_distribution
 
 y_a, y, a, O = lg.load_trajectory(lg.args)
 
-b = []
+bs = []
 for r in range(len(y)):
     yr = np.array(y[r])
     ar = np.array(a[r])
@@ -46,7 +46,40 @@ for r in range(len(y)):
         bn = D[yr[t]]@P_xu[ar[t]]@bn
         # bn = bn/np.sum(bn)
         bn = bn / np.sum(bn, axis=0)
-        b.append(bn)
+        bs.append(bn)
 
-np.unique(b, axis=1)
+
+b = np.unique(np.array(bs), axis=0)
+nb = b.shape[0]
+
+C = np.zeros((nb, nb, nu))
+R = np.zeros((nb, nu))
+
+for r in range(len(y)):
+    if r % 10 == 0:
+        print("r ", r)
+    yr = np.array(y[r])
+    ar = np.array(a[r])
+    Or = O[r]
+    bn = b0
+    for t in range(len(yr)):
+        # Probability (b_{n+1}|b_n, u_n)
+        Pbb = np.zeros(nb)
+        for i in range(nb):
+            for yb in range(ny):
+                Py = D[yb]@P_xu[ar[t]]@bn
+                if np.array_equal(b[i, :], Py / np.sum(Py)):
+                    Pbb[i] += np.diag(D[yb])@P_xu[ar[t]]@bn
+        if bn in b:
+            ind = np.where((bn == b).all(axis=1))[0][0]
+            R[ind, ar[t]] = Or[t][0]
+            C[:, ind, ar[t]] = Pbb
+
+        bn = D[yr[t]]@P_xu[ar[t]]@bn
+        bn = bn / np.sum(bn, axis=0)
+
+np.save("src/C", C)
+np.save("src/R", R)
+
+
 
