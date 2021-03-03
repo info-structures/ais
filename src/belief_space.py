@@ -78,8 +78,9 @@ for r in range(len(y)):
         bn = D[yr[t]]@P_xu[ar[t]]@bn
         bn = bn / np.sum(bn, axis=0)
 
-np.save("src/C", C)
-np.save("src/R", R)
+np.save("src/b", b)
+# np.save("src/C", C)
+# np.save("src/R", R)
 
 
 
