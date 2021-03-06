@@ -37,7 +37,7 @@ def runGUROBIImpl(n, theta=0.5, nIter=10):
 
                 if not (model.status == GRB.OPTIMAL): print("unsuccessful...")
 
-def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_y_b_u=None):
+def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_ybu=None):
     Q1 = cp.Variable((nz, nb), nonneg=True)
     Q2 = cp.Variable((nz, nb), nonneg=True)
     Q3 = cp.Variable((nz, nb), nonneg=True)
@@ -46,7 +46,7 @@ def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_y_b_u=None):
     D = cp.Variable((nz, nb), boolean=True)
     r_bar = cp.Variable((nb, nu))
     Q_det = []
-    P_y_z_u_bar = []
+    P_ybu_bar = []
     loss = 0
     constraints = []
     for j in range(nb):
@@ -62,10 +62,11 @@ def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_y_b_u=None):
                             cp.matmul(np.ones((1, nz)), D) == cp.matmul(np.ones((1, nz)), Q[i]),
                             cp.matmul(D, np.ones((nb, 1))) == np.ones((nz, 1)), ]
 
-            if P_y_b_u is not None:
-                P_y_z_u_bar.append(cp.Variable(P_y_b_u.shape[0], nb))
-                loss += cp.norm(cp.matmul(P_y_z_u_bar[i], b_one_hot) - P_y_b_u[:, :, i]@ b_one_hot)
-                constraints += [cp.matmul(np.ones((1, nz)), D) == cp.matmul(np.ones((1, nz)), P_y_z_u_bar[i]), ]
+            if P_ybu is not None:
+                ny = P_ybu.shape[0]
+                P_ybu_bar.append(cp.Variable((ny, nb), nonneg=True))
+                loss += cp.norm(cp.matmul(P_ybu_bar[i], b_one_hot) - P_ybu[:, :, i]@ b_one_hot)
+                constraints += [cp.matmul(np.ones((1, nz)), D) == cp.matmul(np.ones((1, ny)), P_ybu_bar[i]), ]
 
         if C_det is not None:
             for k in range(C_det.shape[2]):
@@ -78,7 +79,7 @@ def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_y_b_u=None):
     problem = cp.Problem(objective, constraints)
 
     # solve problem
-    problem.solve(solver=cp.GUROBI, verbose=False)
+    problem.solve(solver=cp.GUROBI, verbose=True)
 
     if not (problem.status == cp.OPTIMAL):
         print("unsuccessful...")
@@ -247,14 +248,15 @@ if __name__ == "__main__":
     C = np.load("src/C.npy")
     C_det = np.load("src/C_det.npy")
     R = np.load("src/R.npy")
+    P_ybu = np.load("src/P_ybu.npy")
     y_a = np.load("graph/y_a.npy")
 
     if args.load_graph:
         Q, D, r_bar = load_reduction_graph(nz)
     else:
-        Q_det, Q, D, r_bar = runCVXPYImpl(nz, nb, nu, C, R, C_det)
+        Q, D, r_bar = runCVXPYImpl(nz, nb, nu, C, R, P_ybu=P_ybu)
         if args.save_graph:
-            save_reduction_graph(Q, D, r_bar, nz, Q_det)
+            save_reduction_graph(Q, D, r_bar, nz)
 
     B = Q@D.T
     r = r_bar.T@D.T

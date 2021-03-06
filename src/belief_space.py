@@ -51,9 +51,12 @@ for r in range(len(y)):
 
 b = np.unique(np.array(bs), axis=0)
 nb = b.shape[0]
+y_unique = np.unique(y.reshape((-1)))
+ny = len(y_unique)
 
 C = np.zeros((nb, nb, nu))
 R = np.zeros((nb, nu))
+N_ybu = np.zeros((ny, nb, nu))
 # Find reward for each belief
 for r in range(len(y)):
     if r % 10 == 0:
@@ -73,10 +76,13 @@ for r in range(len(y)):
         if bn in b:
             ind = np.where((bn == b).all(axis=1))[0][0]
             R[ind, ar[t]] = Or[t][0]
+            N_ybu[yr[t], ind, ar[t]] += 1
             # C[:, ind, ar[t]] = Pbb
 
         bn = D[yr[t]]@P_xu[ar[t]]@bn
         bn = bn / np.sum(bn, axis=0)
+
+P_ybu = N_ybu/np.sum(N_ybu, axis=0)[None, :]
 
 # Calculate probability (b_{n+1}|b_n, u_n)
 for j in range(nb):
@@ -104,10 +110,11 @@ for j in range(nb):
                 break
 
 
-np.save("src/b", b)
+# np.save("src/b", b)
 # np.save("src/C", C)
 # np.save("src/R", R)
-np.save("src/C_det", C_det)
+# np.save("src/C_det", C_det)
+np.save("src/P_ybu", P_ybu)
 
 
 
