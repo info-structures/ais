@@ -44,6 +44,11 @@ def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_ybu=None):
     Q4 = cp.Variable((nz, nb), nonneg=True)
     Q = [Q1, Q2, Q3, Q4]
     D = cp.Variable((nz, nb), boolean=True)
+    # Manually initialize the projection matrix
+    # _, D_value, _ = load_reduction_graph(nz)
+    # D_value[7, 1] = 0
+    # D_value[7, 14] = 1
+    # D = cp.Parameter((nz, nb), boolean=True, value=D_value)
     r_bar = cp.Variable((nb, nu))
     Q_det = []
     P_ybu_bar = []
@@ -57,10 +62,10 @@ def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_ybu=None):
             loss += cp.norm(cp.matmul(Q[i], b_one_hot)-cp.matmul(D, C[:, :, i]@b_one_hot))
             # Match reward
             loss += cp.norm(R[j, i] - cp.matmul(r_bar[:, i], b_one_hot))
-            constraints += [cp.sum(D) == nz,
-                            cp.matmul(np.ones((1, nz)), D) <= 1,
-                            cp.matmul(np.ones((1, nz)), D) == cp.matmul(np.ones((1, nz)), Q[i]),
-                            cp.matmul(D, np.ones((nb, 1))) == np.ones((nz, 1)), ]
+            constraints += [cp.sum(D) == nb,
+                            cp.matmul(np.ones((1, nz)), D) == 1,
+                            cp.matmul(np.ones((1, nz)), Q[i]) == 1,
+                            cp.matmul(D, np.ones((nb, 1))) >= 1, ]
 
             if P_ybu is not None:
                 ny = P_ybu.shape[0]
@@ -79,7 +84,7 @@ def runCVXPYImpl(nz, nb, nu, C, R, C_det=None, P_ybu=None):
     problem = cp.Problem(objective, constraints)
 
     # solve problem
-    problem.solve(solver=cp.GUROBI, verbose=True)
+    problem.solve(solver=cp.GUROBI, verbose=False)
 
     if not (problem.status == cp.OPTIMAL):
         print("unsuccessful...")
@@ -165,7 +170,7 @@ def value_iteration(B, r, nz, na, epsilon=0.0001, discount_factor=0.95):
     return policy, V
 
 
-def eval_performance(policy, D, C_det, V, V_b, y_a, na, nb, B_det=None, n_episodes=100, epsilon=1e-8, beta=0.95):
+def eval_performance(policy, D, C_det, V, V_b, y_a, na, nb, b, D_, P_xu, B_det=None, n_episodes=100, epsilon=1e-8, beta=0.95):
     returns = []
     Vs = []
     V_bs = []
@@ -174,6 +179,7 @@ def eval_performance(policy, D, C_det, V, V_b, y_a, na, nb, B_det=None, n_episod
         y = lg.env.reset()
 
         uniform_distribution = np.ones(nb) / nb
+        bn = np.ones(11) / 11
         while True:
             # sample b from initial distribution
             ind_b = np.where(np.random.multinomial(1, uniform_distribution) == 1)[0][0]
@@ -188,17 +194,24 @@ def eval_performance(policy, D, C_det, V, V_b, y_a, na, nb, B_det=None, n_episod
             try:
                 ind_z = np.where(z_one_hot == 1)[0][0]
             except:
-                print("No corresponding z")
+                pass
+                # print("No corresponding z")
             Vs.append(V[ind_z])
-            V_bs.append(V_b[b_one_hot == 1])
+            V_bs.append(V_b[b_one_hot == 1][0])
 
             action = np.arange(na)[policy[ind_z].astype(bool)][0]
 
             y, reward, done, _ = lg.env.step(action)
             reward_episode.append(reward)
 
-            ind_ya = np.where((y == y_a[:, 0])*(action == y_a[:, 1]))[0][0]
-            b_one_hot = C_det[:, :, ind_ya]@b_one_hot
+            # Update one-hot b with belief values in case the first guess is incorrect
+            bn = D_[y]@P_xu[action]@bn
+            bn = bn / np.sum(bn, axis=0)
+            ind_b = np.where((bn == b).all(axis=1))[0][0]
+            b_one_hot = np.zeros(nb)
+            b_one_hot[ind_b] = 1
+            # ind_ya = np.where((y == y_a[:, 0])*(action == y_a[:, 1]))[0][0]
+            # b_one_hot = C_det[:, :, ind_ya]@b_one_hot
             if B_det is not None:
                 z_one_hot = B_det@z_one_hot
             else:
@@ -215,29 +228,36 @@ def eval_performance(policy, D, C_det, V, V_b, y_a, na, nb, B_det=None, n_episod
         returns.append(rets[0])
 
     average_return = np.mean(returns)
-    V_mse = np.norm(np.array(Vs)-np.array(V_bs))
-    print("Average reward: ", )
+    V_mse = np.linalg.norm(np.array(Vs)-np.array(V_bs))
+    print("Average reward: ", average_return)
     print("V mse: ", V_mse)
+    print("Average V mse", V_mse/len(Vs))
     return average_return, V_mse
 
 
 def save_reduction_graph(Q, D, r_bar, nz, Q_det=None):
-    np.save("src/Q_{}".format(nz), Q)
-    np.save("src/D_{}".format(nz), D)
-    np.save("src/r_fit_{}".format(nz), r_bar)
+    np.save("reduction_graph/Q_{}".format(nz), Q)
+    np.save("reduction_graph/D_{}".format(nz), D)
+    np.save("reduction_graph/r_fit_{}".format(nz), r_bar)
     if Q_det is not None:
-        np.save("src/Q_det_{}".format(nz), Q_det)
+        np.save("reduction_graph/Q_det_{}".format(nz), Q_det)
 
 
 def load_reduction_graph(nz, det=False):
-    Q = np.load("src/Q_{}.npy".format(nz))
-    D = np.load("src/D_{}.npy".format(nz))
-    r_bar = np.load("src/r_fit_{}.npy".format(nz))
+    Q = np.load("reduction_graph/Q_{}.npy".format(nz))
+    D = np.load("reduction_graph/D_{}.npy".format(nz))
+    r_bar = np.load("reduction_graph/r_fit_{}.npy".format(nz))
     if det:
-        Q_det = np.load("src/Q_det{}.npy".format(nz))
+        Q_det = np.load("reduction_graph/Q_det{}.npy".format(nz))
         return Q_det, Q, D, r_bar
     else:
         return Q, D, r_bar
+
+def load_underlying_dynamics():
+    D_ = np.load("reduction_graph/D_.npy")
+    P_xu = np.load("reduction_graph/P_xu.npy")
+    b = np.load("reduction_graph/b.npy")
+    return D_, P_xu, b
 
 
 if __name__ == "__main__":
@@ -245,24 +265,25 @@ if __name__ == "__main__":
     nz = lg.args.AIS_state_size
     nb = 15
     nu = 4
-    C = np.load("src/C.npy")
-    C_det = np.load("src/C_det.npy")
-    R = np.load("src/R.npy")
-    P_ybu = np.load("src/P_ybu.npy")
+    C = np.load("reduction_graph/C.npy")
+    C_det = np.load("reduction_graph/C_det.npy")
+    R = np.load("reduction_graph/R.npy")
+    P_ybu = np.load("reduction_graph/P_ybu.npy")
     y_a = np.load("graph/y_a.npy")
 
     if args.load_graph:
         Q, D, r_bar = load_reduction_graph(nz)
     else:
-        Q, D, r_bar = runCVXPYImpl(nz, nb, nu, C, R, P_ybu=P_ybu)
+        Q, D, r_bar = runCVXPYImpl(nz, nb, nu, C, R)
         if args.save_graph:
             save_reduction_graph(Q, D, r_bar, nz)
 
-    B = Q@D.T
-    r = r_bar.T@D.T
+    B = Q@D.T@np.linalg.inv(D@D.T)
+    r = r_bar.T@D.T@np.linalg.inv(D@D.T)
     policy, V = value_iteration(B, r, nz, nu)
     policy_b, V_b = value_iteration(np.einsum('ijk->kij', C), R.T, nb, nu)
-    eval_performance(policy, D, C_det, V, V_b, y_a, nu, nb)
+    D_, P_xu, b = load_underlying_dynamics()
+    eval_performance(policy, D, C_det, V, V_b, y_a, nu, nb, b, D_, P_xu)
 
 
 

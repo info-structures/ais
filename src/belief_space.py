@@ -16,7 +16,7 @@ for i in range(nu):
     assert(len(next_ind) == len(current_ind))
     P_xu[i, next_ind, current_ind] = 1
 
-D = np.zeros((ny, nx, nx))
+D_ = np.zeros((ny, nx, nx))
 ind = [[0],
        [1, 3],
        [2],
@@ -25,7 +25,7 @@ ind = [[0],
        [8, 9],
        [10]]
 for i in range(ny):
-    D[i, ind[i], ind[i]] = 1
+    D_[ i, ind[i], ind[i]] = 1
 
 nb = 15
 uniform_distribution = np.ones(nx)/nx
@@ -43,7 +43,7 @@ for r in range(len(y)):
     Or = O[r]
     bn = b0
     for t in range(len(yr)):
-        bn = D[yr[t]]@P_xu[ar[t]]@bn
+        bn = D_[yr[t]]@P_xu[ar[t]]@bn
         # bn = bn/np.sum(bn)
         bn = bn / np.sum(bn, axis=0)
         bs.append(bn)
@@ -70,16 +70,16 @@ for r in range(len(y)):
         # Pbb = np.zeros(nb)
         # for i in range(nb):
         #     for yb in range(ny):
-        #         Py = D[yb]@P_xu[ar[t]]@bn
+        #         Py = D_[ yb]@P_xu[ar[t]]@bn
         #         if np.array_equal(b[i, :], Py / np.sum(Py)):
-        #             Pbb[i] += np.diag(D[yb])@P_xu[ar[t]]@bn
+        #             Pbb[i] += np.diag(D_[ yb])@P_xu[ar[t]]@bn
         if bn in b:
             ind = np.where((bn == b).all(axis=1))[0][0]
             R[ind, ar[t]] = Or[t][0]
             N_ybu[yr[t], ind, ar[t]] += 1
             # C[:, ind, ar[t]] = Pbb
 
-        bn = D[yr[t]]@P_xu[ar[t]]@bn
+        bn = D_[ yr[t]]@P_xu[ar[t]]@bn
         bn = bn / np.sum(bn, axis=0)
 
 P_ybu = N_ybu/np.sum(N_ybu, axis=0)[None, :]
@@ -91,9 +91,9 @@ for j in range(nb):
         Pbb = np.zeros(nb)
         for i in range(nb):
             for yb in range(ny):
-                Py = D[yb]@P_xu[u]@bn
+                Py = D_[ yb]@P_xu[u]@bn
                 if np.array_equal(b[i, :], Py / np.sum(Py)):
-                    Pbb[i] += np.diag(D[yb])@P_xu[u]@bn
+                    Pbb[i] += np.diag(D_[ yb])@P_xu[u]@bn
         C[:, j, u] = Pbb
 
 # Calculate deterministic transition b_{n+1}= C_det(b_n, u_n, y_n)
@@ -102,7 +102,7 @@ C_det = np.zeros((nb, nb, n_ya))
 for j in range(nb):
     bn = b[j, :]
     for k in range(n_ya):
-        b_next = D[y_a[k][0]]@P_xu[y_a[k][1]]@bn
+        b_next = D_[ y_a[k][0]]@P_xu[y_a[k][1]]@bn
         b_next = b_next / np.sum(b_next, axis=0)
         for i in range(nb):
             if np.array_equal(b[i, :], b_next):
@@ -110,11 +110,13 @@ for j in range(nb):
                 break
 
 
-# np.save("src/b", b)
-# np.save("src/C", C)
-# np.save("src/R", R)
-# np.save("src/C_det", C_det)
-np.save("src/P_ybu", P_ybu)
+# np.save("reduction_graph/b", b)
+# np.save("reduction_graph/C", C)
+# np.save("reduction_graph/R", R)
+# np.save("reduction_graph/C_det", C_det)
+# np.save("reduction_graph/P_ybu", P_ybu)
+np.save("reduction_graph/D_", D_)
+np.save("reduction_graph/P_xu", P_xu)
 
 
 
