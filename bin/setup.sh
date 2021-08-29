@@ -1,16 +1,24 @@
 #!/bin/bash
-
-VMS_DIR=${PWD}/python-vms
+userhome=~
+VMS_DIR=${userhome}/python-vms
 PROJECT=ais
-AIS_DIR=${PWD}/lib/gym/envs
+my_repo=https://github.com/info-structures/ais
 
 mkdir -p ${VMS_DIR}
 virtualenv --no-download -p python3 ${VMS_DIR}/${PROJECT}
 source ${VMS_DIR}/${PROJECT}/bin/activate
 pip install --upgrade pip
 
+cd ${VMS_DIR}/${PROJECT}
+mkdir code
+cd code
+git clone ${my_repo}
+git checkout ap1_ap2
+
+AIS_DIR=${VMS_DIR}/${PROJECT}/code/ais/lib/gym/envs
+
 # Install libraries
-pip install numpy torch torchvision matplotlib scikit-image pygame
+pip install numpy torch torchvision matplotlib wandb
 
 # Install Gym
 mkdir -p ${VMS_DIR}/${PROJECT}/libraries 
