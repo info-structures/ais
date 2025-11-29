@@ -1,6 +1,6 @@
 import numpy as np
-from gym import error, spaces, utils
-import gym
+import gymnasium as gym
+from gymnasium import error, spaces, utils
 
 
 #state space: {0, 1}

@@ -1,9 +1,8 @@
 import os
 import numpy as np
 import argparse
-import gym
-import gym_minigrid
-from gym_minigrid.wrappers import *
+import gymnasium as gym
+import minigrid
 from train_manager import batch_creator
 
 import torch
@@ -18,7 +17,7 @@ parser = argparse.ArgumentParser(description='This code runs AIS using the Next 
 parser.add_argument("--output_dir", help="Directory to store output results in", default="results")
 parser.add_argument("--env_name", help="Gym Environment to Use. Options: `Tiger-v0`, `Voicemail-v0`, `CheeseMaze-v0`\n `DroneSurveillance-v0`, `RockSampling-v0`", default="Tiger-v0")
 parser.add_argument("--eval_frequency", type=int, help="Number of Batch Iterations per Evaluation", default=100)
-parser.add_argument("--N_eps_eval", type=int, help="Number of Episodes per Evaluation", default=50)
+parser.add_argument("--N_eps_eval", type=int, help="Number of Episodes per Evaluation", default=10)
 parser.add_argument("--beta", type=float, help="Discount Factor", default=0.95)
 parser.add_argument("--lmbda",	type=float, help="lambda value (Trade off between next reward and next observation prediction)", default=0.0001)
 parser.add_argument("--policy_LR", type=float, help="Learning Rate for Policy Network", default=0.0007)
@@ -50,7 +49,6 @@ seed = args.seed
 #set random seeds
 np.random.seed(seed)
 torch.manual_seed(seed)
-env.seed(seed)
 
 if (args.env_name[:8] == 'MiniGrid') and (args.IPM == 'KL'):
 	args_list = [str(args.env_name), str(eval_frequency), str(N_eps_eval), str(beta), str(lmbda), str(policy_LR), str(ais_LR), str(batch_size), str(num_batches), str(AIS_SS), str(AIS_PN), str(IPM)]

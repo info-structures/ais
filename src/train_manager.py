@@ -91,7 +91,7 @@ class batch_creator():
 			action = torch.zeros(self.env.action_space.n)
 			reward = 0.
 			if self.args.env_name[:8] == 'MiniGrid':
-				current_obs = self.env.reset()['image']
+				current_obs = self.env.reset()[0]['image']
 				current_obs = self.get_encoded_obs(current_obs)
 			else:
 				current_obs = self.env.reset()
@@ -110,7 +110,7 @@ class batch_creator():
 
 				self.policy_history = torch.cat((self.policy_history, c.log_prob(action).unsqueeze(0)))
 
-				next_obs, reward, done, _ = self.env.step(action.item())
+				next_obs, reward, done, truncated, _ = self.env.step(action.item())
 				self.reward_episode.append(reward)
 
 				action = self.convert_int_to_onehot(action, self.env.action_space.n)
@@ -135,7 +135,7 @@ class batch_creator():
 				self.episode_id[int(num_samples)] = int(episode_counter)
 				num_samples = num_samples + 1
 
-				if done:
+				if done or truncated:
 					episode_counter = episode_counter + 1
 					break
 				if num_samples >= self.batch_size:
@@ -152,7 +152,7 @@ class batch_creator():
 				reward_episode = []
 
 				if self.args.env_name[:8] == 'MiniGrid':
-					current_obs = self.env.reset()['image']
+					current_obs = self.env.reset()[0]['image']
 					current_obs = self.get_encoded_obs(current_obs)
 				else:
 					current_obs = self.env.reset()
@@ -173,7 +173,7 @@ class batch_creator():
 					else:
 						c = Categorical(policy_probs)
 						action = c.sample()
-					next_obs, reward, done, _ = self.env.step(action.item())
+					next_obs, reward, done, truncated, _ = self.env.step(action.item())
 
 					action = self.convert_int_to_onehot(action, self.env.action_space.n)
 					reward_episode.append(reward)
@@ -185,7 +185,7 @@ class batch_creator():
 						current_obs = next_obs
 						current_obs = self.convert_int_to_onehot(current_obs, self.env.observation_space.n)
 
-					if done:
+					if done or truncated:
 						break
 
 				rets = []

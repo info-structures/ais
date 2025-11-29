@@ -1,10 +1,9 @@
 import numpy as np
 import copy
-from gym import error, spaces, utils
-from gym.utils import seeding
-from gym.envs.registration import register
-import gym
-
+import gymnasium as gym
+from gymnasium import error, spaces, utils
+from gymnasium.utils import seeding
+from gymnasium.envs.registration import register
 
 
 class FourByFourMazeEnv(gym.Env):
@@ -17,11 +16,6 @@ class FourByFourMazeEnv(gym.Env):
         self.renewal=False
         self.action_space=spaces.Discrete(4)
         self.observation_space=spaces.Discrete(2)
-        self.seed()
-
-    def seed(self, seed=None):
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
         
     def step(self,action):
         if action==0:
@@ -116,9 +110,9 @@ class FourByFourMazeEnv(gym.Env):
             observation=0
             reward=0
         self.current_state=next_state
-        return observation,reward,False,{}
+        return observation,reward,False,False,{}
     
-    def reset(self):
+    def reset(self, seed=None, options=None):
         self.start_state=self.np_random.multinomial(1,self.start_state_prob).argmax()
         self.current_state=copy.deepcopy(self.start_state)
         observation=0

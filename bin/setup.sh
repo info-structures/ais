@@ -13,19 +13,13 @@ pip install --upgrade pip
 pip install numpy torch torchvision matplotlib scikit-image pygame
 
 # Install Gym
-mkdir -p ${VMS_DIR}/${PROJECT}/libraries 
-cd ${VMS_DIR}/${PROJECT}/libraries
-git clone https://github.com/openai/gym
-cd gym
-pip install -e .
+pip install gymnasium
 
-# Install Gym-minigrid
-cd ${VMS_DIR}/${PROJECT}/libraries
-git clone https://github.com/maximecb/gym-minigrid.git
-cd gym-minigrid
-pip install -e .
+# Install minigrid
+pip install minigrid
 
-# Install AIS
-mkdir -p ${VMS_DIR}/${PROJECT}/libraries/gym/gym/envs/pomdp
-cp ${AIS_DIR}/pomdp/*.py ${VMS_DIR}/${PROJECT}/libraries/gym/gym/envs/pomdp
-cat ${AIS_DIR}/__init__.py >> ${VMS_DIR}/${PROJECT}/libraries/gym/gym/envs/__init__.py
+
+GYM_PATH=$(python -c "import gymnasium, os; print(os.path.dirname(gymnasium.__file__))")
+mkdir -p ${GYM_PATH}/envs/pomdp
+cp ${AIS_DIR}/pomdp/*.py ${GYM_PATH}/envs/pomdp
+cat ${AIS_DIR}/__init__.py >> ${GYM_PATH}/envs/__init__.py

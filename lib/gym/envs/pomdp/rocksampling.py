@@ -2,9 +2,9 @@
 #https://github.com/JuliaPOMDP/RockSample.jl
 
 import numpy as np
-from gym import error, spaces, utils
-from gym.utils import seeding
-import gym
+import gymnasium as gym
+from gymnasium import error, spaces, utils
+from gymnasium.utils import seeding
 import random
 import math
 
@@ -38,13 +38,6 @@ class RockSamplingEnv(gym.Env):
 		self.observation_space=spaces.Discrete(3)
 
 		self.attempted_rock_sample = False
-
-		#this seed is for env rng
-		self.seed()
-
-	def seed(self, seed=None):
-		self.np_random, seed = seeding.np_random(seed)
-		return [seed]
 
 	def encode_state(self, rover_row, rover_col, rock_status):
 		rs_encoding = 0
@@ -138,12 +131,12 @@ class RockSamplingEnv(gym.Env):
 		self.last_action = action
 		self.current_state = next_state
 
-		return observation, reward, done, {'ars': self.attempted_rock_sample}
+		return observation, reward, done, False, {'ars': self.attempted_rock_sample}
 
-	def reset(self):
+	def reset(self, seed=None, options=None):
 		self.last_action = -1
 
-		rock_status = self.np_random.randint(2, size = self.num_rocks)
+		rock_status = self.np_random.integers(2, size = self.num_rocks)
 		if np.all(rock_status == 0):
 			self.attempted_rock_sample = True
 		else:

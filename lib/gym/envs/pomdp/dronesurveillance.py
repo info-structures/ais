@@ -2,9 +2,9 @@
 #https://github.com/JuliaPOMDP/DroneSurveillance.jl
 
 import numpy as np
-from gym import error, spaces, utils
-from gym.utils import seeding
-import gym
+import gymnasium as gym
+from gymnasium import error, spaces, utils
+from gymnasium.utils import seeding
 
 # drone/ground_bot row, col positions are measured from bottom left (0, 0)
 #ground_bot cannot transition to (0, 0) or (4, 4) - (goal locations)
@@ -29,11 +29,6 @@ class DroneSurveillanceEnv(gym.Env):
 		self.action_space = spaces.Discrete(5)
 		self.state_space = spaces.Discrete(self.map_size[0]*self.map_size[1]*(self.map_size[0]*self.map_size[1]-2))
 		self.observation_space = spaces.Discrete(10)
-		self.seed()
-
-	def seed(self, seed=None):
-		self.np_random, seed = seeding.np_random(seed)
-		return [seed]
 
 	def encode_state(self, drone_row, drone_col, ground_bot_row, ground_bot_col):
 		d_encoding = drone_col + drone_row*self.map_size[1]
@@ -155,9 +150,9 @@ class DroneSurveillanceEnv(gym.Env):
 			reward = 0.
 
 		self.current_state = next_state
-		return observation, reward, done, {}
+		return observation, reward, done, False, {}
 
-	def reset(self):
+	def reset(self, seed=None, options=None):
 		drone_row = self.init_pos[0]
 		drone_col = self.init_pos[1]
 		g_initlist = [i for i in range(self.map_size[0]*self.map_size[1] - 2)]
